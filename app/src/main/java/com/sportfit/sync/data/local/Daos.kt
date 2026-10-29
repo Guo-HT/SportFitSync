@@ -169,6 +169,15 @@ interface SyncDao {
     )
 
     /**
+     * 批量写入账本行，同 (source, target, activityId) 覆盖。
+     *
+     * 去重结论可能一次涉及成百上千条活动（内容相同、目标端已有），
+     * 逐条 upsert 会把一次同步拖成几千次 SQL；这里一次事务写完。
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRecords(records: List<SyncRecordEntity>)
+
+    /**
      * 内容指纹集合：该方向下已经同步过的活动。
      *
      * 按 id 去重挡不住「同一份数据换了新 id」的情况（重新导入 FIT、切换同平台

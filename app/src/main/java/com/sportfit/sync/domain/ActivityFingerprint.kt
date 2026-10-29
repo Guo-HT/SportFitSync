@@ -32,6 +32,27 @@ import com.sportfit.sync.core.net.Hashing
  *  - **Values are normalised** (trimmed, lower-cased, distance rounded to
  *    whole metres) so that cosmetic differences between platforms do not
  *    produce different fingerprints for the same session.
+ *
+ * ## Strict vs. loose fingerprint
+ *
+ * There are two flavours, and they are used for different comparisons:
+ *
+ *  - [of] — the **strict** fingerprint (start time + sport type + distance +
+ *    duration + name). It is used when both sides come from the **same**
+ *    platform, where sport type and name are spelled the same way.
+ *  - [looseOf] — the **loose** fingerprint (start time + distance + duration
+ *    only). It is used for **cross-platform** comparison: Garmin writes the
+ *    sport as `"running"`, Coros as `"8"` and Strava as `"run"`, and the same
+ *    ride is called "Morning Ride" on one platform and "晨骑" on another, so
+ *    the strict fingerprint would never match across platforms. Distance and
+ *    duration are the only coarse fields every platform reports.
+ *
+ * The loose fingerprint requires **distance or duration to be present** (in
+ * addition to the start time). With nothing but a start time the match would
+ * be based on a single number, and a false positive silently drops a
+ * legitimate activity from the sync — worse than not comparing at all. When
+ * the data is too thin, the loose fingerprint is [NONE] and the caller falls
+ * back to id-based matching.
  */
 object ActivityFingerprint {
 
@@ -61,6 +82,43 @@ object ActivityFingerprint {
             append(distanceMeters?.let { Math.round(it) }?.toString().orEmpty()).append('|')
             append(durationSec?.toString().orEmpty()).append('|')
             append(name.trim().lowercase())
+        }
+        return Hashing.sha256Hex(payload)
+    }
+
+    /**
+     * 跨平台比对用的宽松指纹：只看「开始时间 + 距离(米) + 时长(秒)」。
+     *
+     * 运动类型和名字在不同平台表示不同，跨平台比较只能用这几个所有平台都会给出的字段。
+     *
+     * 规则：
+     *  - 没有开始时间 → [NONE]（无从比较）；
+     *  - 距离和时长同时没有 → [NONE]（数据太少，误判风险高，宁可不比）。
+     */
+    fun looseOf(activity: ActivityMeta): String = looseOf(
+        startTime = activity.startTime,
+        distanceMeters = activity.distanceMeters,
+        durationSec = activity.durationSec,
+    )
+
+    /**
+     * 跨平台比对用的宽松指纹：只看「开始时间 + 距离(米) + 时长(秒)」。
+     *
+     * 运动类型和名字在不同平台表示不同，跨平台比较只能用这几个所有平台都会给出的字段。
+     *
+     * 规则：
+     *  - 没有开始时间 → [NONE]（无从比较）；
+     *  - 距离和时长同时没有 → [NONE]（数据太少，误判风险高，宁可不比）；
+     *  - 距离用 `Math.round` 取整到米，时长用秒。
+     */
+    fun looseOf(startTime: Long?, distanceMeters: Double?, durationSec: Long?): String {
+        if (startTime == null) return NONE
+        if (distanceMeters == null && durationSec == null) return NONE
+
+        val payload = buildString {
+            append(startTime).append('|')
+            append(distanceMeters?.let { Math.round(it) }?.toString().orEmpty()).append('|')
+            append(durationSec?.toString().orEmpty())
         }
         return Hashing.sha256Hex(payload)
     }

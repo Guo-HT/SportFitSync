@@ -110,6 +110,14 @@ class SyncEngine(
          * slice and merge it into the local table.
          */
         const val HISTORY_LIMIT = 5_000
+
+        /**
+         * 目标端最多取多少条已有活动用于比对。
+         *
+         * 只做「内容是否已经存在」的兜底检查，取最近的一批即可；取更多会把
+         * 一次同步拖得很慢，而漏掉的比对只会退化成「照常同步」，不会误删。
+         */
+        const val TARGET_COMPARE_LIMIT = 500
     }
 
     fun run(request: SyncRequest): Flow<SyncEvent> = channelFlow {
@@ -189,27 +197,59 @@ class SyncEngine(
                 .syncedFingerprints(request.source.key, request.target.key)
                 .toSet()
 
-            val planned = SyncPlanner.selectCandidates(
+            // 目标端已有的活动：源端这条数据，目标端可能早就有了（之前用别的
+            // 工具同步过、或者本地账本被清过）。目标平台不支持查询、或查询
+            // 失败时，退化成「只和本地账本比对」——宁可多传一次，也不误跳。
+            val targetActivities = try {
+                target.listActivities(TARGET_COMPARE_LIMIT)
+            } catch (error: Exception) {
+                log(
+                    "读取 ${request.target.displayName} 已有活动失败，本次只与本地账本比对：" +
+                        (error.message ?: "未知错误"),
+                    "WARN",
+                )
+                emptyList()
+            }
+            val targetFingerprints = targetActivities.mapNotNull { activity ->
+                ActivityFingerprint.looseOf(activity).takeIf { it != ActivityFingerprint.NONE }
+            }.toSet()
+
+            // ===== 拉完列表立刻比对去重 =====
+            val plan = SyncPlanner.plan(
                 activities = activities,
                 statusById = records.mapValues { SyncStatus.fromCode(it.value.status) },
                 excludedIds = excluded,
                 selectedIds = request.selectedIds,
                 includeAlreadySynced = request.includeAlreadySynced,
                 syncedFingerprints = syncedFingerprints,
+                targetLooseFingerprints = targetFingerprints,
             )
+
+            // 判定为「同样的数据」的活动，把结论写回账本：
+            // 界面上的状态才和账本一致（显示已同步），下次也能按 id 直接跳过。
+            markDuplicatesAsSynced(
+                source = request.source.key,
+                target = request.target.key,
+                duplicates = plan.duplicatesByContent + plan.duplicatesOnTarget,
+                existing = records,
+            )
+
+            log(
+                "比对去重：已同步 ${plan.alreadySynced.size} 条 · " +
+                    "内容相同 ${plan.duplicatesByContent.size} 条 · " +
+                    "目标端已有 ${plan.duplicatesOnTarget.size} 条 · " +
+                    "已排除 ${plan.excluded.size} 条 · " +
+                    "待同步 ${plan.candidates.size} 条",
+            )
+
             // 单次运行的处理量仍受「每次最多 N 条」限制；用户显式勾选的活动不受限制。
             val candidates = SyncPlanner.applyLimit(
-                candidates = planned,
+                candidates = plan.candidates,
                 limit = request.listLimit,
                 explicitSelection = request.selectedIds != null,
             )
-
-            val sameContent = activities.count { activity ->
-                val fingerprint = ActivityFingerprint.of(activity)
-                fingerprint.isNotEmpty() && fingerprint in syncedFingerprints
-            }
-            if (sameContent > 0) {
-                log("$sameContent 条活动与已同步的数据内容相同，将自动跳过", "INFO")
+            if (candidates.size < plan.candidates.size) {
+                log("单次上限 ${request.listLimit} 条，本次先处理前 ${candidates.size} 条")
             }
             total = candidates.size
 
@@ -465,20 +505,85 @@ class SyncEngine(
         db.syncDao().requeueFailed(source.key, target.key)
 
     /**
+     * 把「判定为同样的数据」的活动写回账本。
+     *
+     * 这些活动本次不会下载、不会上传，但账本必须记住这个结论：
+     *  - 界面上的「已同步」才和账本一致（否则选择器里会一直显示「待同步」）；
+     *  - 下次不用再比对内容，直接按 id 跳过。
+     */
+    private suspend fun markDuplicatesAsSynced(
+        source: String,
+        target: String,
+        duplicates: List<ActivityMeta>,
+        existing: Map<String, SyncRecordEntity>,
+    ) {
+        if (duplicates.isEmpty()) return
+        val now = System.currentTimeMillis()
+        db.syncDao().upsertRecords(
+            duplicates.map { activity ->
+                SyncRecordEntity(
+                    sourcePlatform = source,
+                    targetPlatform = target,
+                    activityId = activity.id,
+                    status = SyncStatus.SYNCED.code,
+                    attempts = existing[activity.id]?.attempts ?: 0,
+                    lastError = null,
+                    syncedAt = now,
+                    fingerprint = ActivityFingerprint.of(activity),
+                    updatedAt = now,
+                )
+            },
+        )
+    }
+
+    /**
      * Pulls the source's activity listing without syncing anything.
      *
      * Used by the picker's "refresh" action so the user can preview before
      * committing to a run. The whole history is pulled here, because the
      * local table is what the picker — and every later incremental run —
      * works from.
+     *
+     * The listing is compared against the ledger right away, so the picker
+     * can show what is already synced before a run is even started.
      */
     suspend fun refreshSourceActivities(
         direction: SyncDirection,
         limit: Int = HISTORY_LIMIT,
-    ): Int = withContext(Dispatchers.IO) {
-        val activities = pullHistory(direction.source, limit)
-        seedLedger(direction.source, direction.target, activities)
-        activities.size
+    ): ActivityDedupSummary = withContext(Dispatchers.IO) {
+        val fetched = pullHistory(direction.source, limit)
+        seedLedger(direction.source, direction.target, fetched)
+
+        val records = db.syncDao()
+            .recordsFor(direction.source.key, direction.target.key)
+            .associateBy { it.activityId }
+        val excluded = db.exclusionDao()
+            .listFor(direction.source.key, direction.target.key)
+            .map { it.activityId }
+            .toSet()
+        val syncedFingerprints = db.syncDao()
+            .syncedFingerprints(direction.source.key, direction.target.key)
+            .toSet()
+
+        val activities = cachedActivities(direction.source)
+        val plan = SyncPlanner.plan(
+            activities = activities,
+            statusById = records.mapValues { SyncStatus.fromCode(it.value.status) },
+            excludedIds = excluded,
+            syncedFingerprints = syncedFingerprints,
+        )
+        markDuplicatesAsSynced(
+            source = direction.source.key,
+            target = direction.target.key,
+            duplicates = plan.duplicatesByContent,
+            existing = records,
+        )
+        ActivityDedupSummary(
+            localTotal = activities.size,
+            alreadySynced = plan.alreadySynced.size,
+            duplicatesByContent = plan.duplicatesByContent.size,
+            pending = plan.candidates.size,
+        )
     }
 
     /**
@@ -514,6 +619,22 @@ class SyncEngine(
         return activities
     }
 }
+
+/** 「拉取列表 + 比对去重」的结果，用于界面提示。 */
+data class ActivityDedupSummary(
+    /** 本地一共存了多少条活动。 */
+    val localTotal: Int = 0,
+    /** 按 id 命中账本、已经同步过的。 */
+    val alreadySynced: Int = 0,
+    /** 内容与已同步数据相同、这次不再同步的。 */
+    val duplicatesByContent: Int = 0,
+    /** 目标端已经有的（只有同步任务会查目标端，选择器刷新不查）。 */
+    val duplicatesOnTarget: Int = 0,
+    /** 被用户排除的。 */
+    val excluded: Int = 0,
+    /** 本次可以同步的。 */
+    val pending: Int = 0,
+)
 
 /** Convenience for classifying a throwable into a user-facing message. */
 fun Throwable.toUserMessage(): String = when (this) {

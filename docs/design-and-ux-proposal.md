@@ -184,6 +184,9 @@ interface PlatformTarget { suspend fun login(); suspend fun upload(file: RemoteF
 > 但 activityId 不是「这条活动」的稳定名字（重新导入 FIT、换同平台账号都会换 id），
 > 所以额外存一个**内容指纹**（开始时间 + 名称 + 距离 + 时长 + 运动类型的归一化哈希）：
 > 指纹命中「本方向已同步」集合的活动按已同步处理，不再重复上传。
+> 跨平台比较（源端 vs 目标端已有活动）另用一个**宽松指纹**
+> （开始时间 + 距离 + 时长）：运动类型和名字各平台表示不同
+> （Garmin `"running"` / Coros `"8"` / Strava `"run"`），只有这几个字段通用。
 
 ### 2.5 同步引擎（相对源项目的改进）
 
@@ -191,6 +194,7 @@ interface PlatformTarget { suspend fun login(); suspend fun upload(file: RemoteF
 2. **失败可重试**：失败写 `status=2`，UI 上「重试失败项」直接重跑这批 id；不再有"永不重试"的死角。
 3. **可取消**：`Job.cancel()` + 清理临时目录，状态落 `cancelled`。
 4. **增量**：配置账号时把该账号的**全部历史活动**拉进本地库（上限 5000 条）；之后每次同步只从网络上取**最新一批**并与本地库合并，**候选集取自本地库**（新活动只有先落库才可能被同步）。单次运行仍受「每次最多 N 条」限制，但老活动因此也能排上队。
+5. **拉列表即比对去重**：拉完列表立刻做一次比对，产出五个分类 —— 候选 / 已同步（按 id）/ 内容相同（指纹命中账本）/ 目标端已有（跨平台宽松指纹）/ 已排除；同步日志直接报出各分类条数，判定为重复的活动把结论写回账本（状态变「已同步」），下次按 id 直接跳过。目标端比对通过 `PlatformTarget.listActivities()` 实现，默认返回空列表（不支持就退化成只比本地账本），目前只有 Coros 实现了。
 5. **预检**：同步前校验账号有效性、网络、区域匹配（如 Garmin CN 账号 + garmin.com 域）。
 6. **临时文件策略**：写 `cacheDir/fit-cache/{jobId}/`，**成功即删**；失败保留供诊断（可配）。
 
@@ -361,12 +365,12 @@ interface PlatformTarget { suspend fun login(); suspend fun upload(file: RemoteF
 | 演练模式 | Debug 专用内置平台（`Platform.DEMO`）：12 条合成活动、确定性失败与重复，无需账号/网络即可跑通全流程；Release 构建在 UI 中隐藏 | 完成，设备端跑通 |
 | 后台保活 | `SyncService` 前台服务（`dataSync` 类型）渲染进度通知；后台 Worker 升级为 `setForeground()` 以突破 WorkManager 10 分钟上限；首次同步前请求通知权限 | 完成，设备实测 |
 | 方向记忆 | 源/目标选择与策略切换后写入设置，重启不再回落到默认方向 | 完成，设备实测 |
-| 仪器测试 | `CacheManagerTest`（8 项）+ `ActivityExporterTest`（2 项）+ `SyncEngineTest`（4 项）+ `AppDatabaseMigrationTest`（1 项，验证 v2→v3 迁移不丢账号与账本），跑在真机/模拟器上：保留策略、危险分类需 `force`、一键清理不动账本、MediaStore 写入与读回 | 完成，模拟器通过 |
+| 仪器测试 | `CacheManagerTest`（10 项）+ `ActivityExporterTest`（2 项）+ `SyncEngineTest`（6 项）+ `AppDatabaseMigrationTest`（1 项，验证 v2→v3 迁移不丢账号与账本），跑在真机/模拟器上：保留策略、危险分类需 `force`、一键清理不动账本、MediaStore 写入与读回、同步二次运行不重复上传、账本写入内容指纹、日志报出比对明细 | 完成，模拟器通过 |
 | 方向矩阵校验 | `SyncDirectionMatrixTest`（8 项）把「5 源 × 3 目标 − 3 个自环 = 12 条」与上游 12 个 `<src>_sync_<dst>.py` 脚本逐一对应，少一条就编译失败 | 完成 |
 | **离线导出** | `ActivityExporter`：API 29+ 走 MediaStore 落到真正的 `下载/SportFitSync`（无需存储权限），更低版本回落到应用外部目录；文件名清洗非法字符与空白；`ExportEngine` 复用同步的进度/日志/历史管线，伪目标 `local-files` | 完成，设备上产出真实文件 |
 | 常用策略 | Room `strategies` 表（方向去重、可命名、单一后台方向）、首页卡片一键切换/设为后台/删除，后台 Worker 优先使用标记的方向 | 完成，模拟器验证持久化 |
 | Strava 授权 | `StravaOAuth` + 内嵌 WebView 拦截 `http://localhost/exchange_token` 回调，换码后加密存 token；账号页提供「授权」入口 | 完成（需用户自建 Strava 应用） |
-| 单元测试 | **78 项全绿**，覆盖 FIT/ZIP 归一化、RFC3986 编码与 HMAC、Garmin 签名基串（含双编码回归）、时间解析、Strava OAuth 回调、同步候选选择（失败可重试等 7 条规则 + 指纹去重 5 条 + 处理量上限 3 条）、内容指纹 9 条、Coros STS 通道选择与凭证解码（12 项）、实时体检入口 `CorosLiveCheck`（无凭据时自动跳过）；其中一项抓出真实缺陷：`oauth_signature` 未写入 Authorization 头（会导致 Garmin 恒定 401） | 完成 |
+| 单元测试 | **95 项全绿**，覆盖 FIT/ZIP 归一化、RFC3986 编码与 HMAC、Garmin 签名基串（含双编码回归）、时间解析、Strava OAuth 回调、同步候选选择与五分类明细（失败可重试、已同步 vs 内容相同、显式勾选仍套用指纹规则、处理量上限）、内容指纹 16 条（严格 9 + 宽松 7）、Coros STS 通道选择与凭证解码（12 项）、实时体检入口 `CorosLiveCheck`（无凭据时自动跳过）；其中一项抓出真实缺陷：`oauth_signature` 未写入 Authorization 头（会导致 Garmin 恒定 401） | 完成 |
 
 ### 真实平台联调进展
 

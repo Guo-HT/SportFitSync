@@ -990,7 +990,50 @@ navController.navigate(tab.route) {
 - 指纹只影响**「已经同步过」**的判断，失败项照常重试；
 - 指纹是**每个方向**一份：Garmin→Coros 传过了，不代表 Coros→Garmin 也传过。
 
-### 14.4 这一轮改动的落点
+### 14.4 去重要发生在「拉列表的那一刻」
+
+用户反馈的原话是：**「点击进入同步任务后，拉取运动记录列表时，就进行运动数据比对去重」**。
+这不只是时机问题 —— 上一版虽然也跳过重复项，但有三个洞：
+
+1. **账本里没有落地**：被指纹跳过的活动，账本行还是「未同步」，
+   选择器里靠指纹临时显示成「已同步」，账本本身却是另一回事；
+2. **日志数字是错的**：老代码把「按 id 已经同步过的」也算进「内容相同」，
+   于是每次同步都报「N 条活动与已同步的数据内容相同」，N 等于全部已同步数 ——
+   这个数字说明不了任何事；
+3. **只比了本地账本**：目标账号里可能**早就**有这些活动了（之前用别的工具同步过，
+   或者本地账本被清过），再传一遍就是副本 —— 而本地账本对此一无所知。
+
+**现在的做法**（`SyncEngine.run()` 里，拉完列表立刻做）：
+
+```
+读取 Garmin 活动列表（增量，本次最多 200 条）…
+本次拉取 200 条活动
+本地共 500 条活动记录
+比对去重：已同步 150 条 · 内容相同 12 条 · 目标端已有 5 条 · 已排除 1 条 · 待同步 332 条
+本次将同步 200 条活动
+```
+
+- `SyncPlanner.plan(...)` 一次给出**五个分类**：`candidates` / `alreadySynced` /
+  `duplicatesByContent` / `duplicatesOnTarget` / `excluded`；
+- **判定顺序**：先看 id（这个 id 我们同步过吗），再看指纹（数据一样吗）。
+  顺序反过来的话「内容相同」会吞掉所有已同步的活动，报出来的数字就没意义了；
+- **目标端比对**：`PlatformTarget.listActivities(limit)`（默认返回空列表 = 不支持，
+  自动退化成「只比本地账本」）。目前只有 **Coros** 实现了它
+  （`CorosTarget` 复用 `activity/query`），其它平台保持默认；
+  查询失败也只是退化成不比，**不会中断同步**；
+- **跨平台用宽松指纹**：运动类型和名字各平台表示不同
+  （Garmin `"running"` / Coros `"8"` / Strava `"run"`），
+  所以 `ActivityFingerprint.looseOf(...)` 只用「开始时间 + 距离 + 时长」；
+  距离和时长**同时**缺失时返回 `NONE`（数据太少，宁可不比也不误跳）；
+- **结论写回账本**：判定为重复的活动，账本行写成「已同步 + 指纹」，
+  状态才和界面一致，下次也能按 id 直接跳过；
+- 「选择活动同步」页的刷新同样拉完立刻比对，提示语变成
+  「本地活动列表已更新：500 条（已同步 150 · 内容相同 12 · 待同步 338）」。
+
+**误跳的兜底**：宽松指纹要同时对上「开始时间（毫秒）+ 距离（米）+ 时长（秒）」，
+正常活动不可能撞上；万一真撞了，「重新同步已同步项」可以强制再传一遍。
+
+### 14.5 这一轮改动的落点
 
 | 位置 | 改动 |
 |---|---|
@@ -999,12 +1042,14 @@ navController.navigate(tab.route) {
 | `ui/screens/AccountsScreen.kt` | 每个平台显示「本地已存 N 条活动」 |
 | `ui/screens/AccountEditScreen.kt` | 提示「保存后会自动拉取历史活动」 |
 | `ui/screens/SettingsScreen.kt` | 「每次最多拉取 N 条」改为「每次同步最多处理 N 条」 |
-| `sync/SyncEngine.kt` | `warmUpPlatform()`；同步改为增量拉取 + 本地全集；指纹落库 |
-| `sync/SyncPlanner.kt` | 指纹规则 + `applyLimit()` |
+| `sync/SyncEngine.kt` | `warmUpPlatform()`；同步改为增量拉取 + 本地全集；拉完立刻比对去重、结论写回账本 |
+| `sync/SyncPlanner.kt` | `plan()` 五分类（候选/已同步/内容相同/目标端已有/已排除）+ `applyLimit()` |
 | `sync/ExportEngine.kt` | 以本地库为全集；指纹落库 |
-| `domain/ActivityFingerprint.kt` | 内容指纹（纯函数） |
-| `data/local/{Entities,Daos,AppDatabase}.kt` | `fingerprint` 列、`syncedFingerprints()`、`observeCounts()`、v2→v3 非破坏性迁移 |
+| `domain/ActivityFingerprint.kt` | 内容指纹（严格）+ 跨平台宽松指纹（纯函数） |
+| `platform/Platform.kt` | `PlatformTarget.listActivities()`（默认空列表 = 不支持） |
+| `platform/coros/CorosGateway.kt` | `CorosTarget` 支持查询目标端已有活动 |
+| `data/local/{Entities,Daos,AppDatabase}.kt` | `fingerprint` 列、`syncedFingerprints()`、`upsertRecords()` 批量写账本、`observeCounts()`、v2→v3 非破坏性迁移 |
 | `cache/CacheManager.kt` | 不再按时间清理在用账号的活动列表 |
 | `app/src/androidTest/.../AppDatabaseMigrationTest.kt` | 迁移不丢账号与账本 |
 
-用例数：单元测试 **78** 条（新增 17 条：指纹 9、规划器 8）。
+用例数：单元测试 **95** 条（指纹 16、规划器 25），设备端 **20** 条。

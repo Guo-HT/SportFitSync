@@ -75,6 +75,13 @@ interface PlatformTarget {
 
     /** [payload] is always a raw `.fit`; targets wrap it if they need a ZIP. */
     suspend fun upload(payload: FitPayload): UploadOutcome
+
+    /**
+     * 目标端已有的活动列表，用于同步前比对去重。
+     *
+     * 默认返回空列表 = 该平台不支持查询目标端已有活动，比对自动退化为「只和本地账本比对」。
+     */
+    suspend fun listActivities(limit: Int = 500): List<ActivityMeta> = emptyList()
 }
 
 /**

@@ -78,6 +78,15 @@ internal class CorosTarget(private val client: CorosClient) : PlatformTarget {
 
     override val platform: Platform = Platform.COROS
 
+    /**
+     * Coros 目标端已有的活动：同步前拿来做跨平台比对去重。
+     *
+     * 目标账号里可能早就有了这些活动（别的工具同步过、或本地账本被清过），
+     * 再传一遍就是副本。
+     */
+    override suspend fun listActivities(limit: Int): List<ActivityMeta> =
+        client.listActivities(limit)
+
     override suspend fun upload(payload: FitPayload): UploadOutcome = withContext(Dispatchers.IO) {
         val userId = client.userId
             ?: return@withContext UploadOutcome.Failed("Coros 未登录，无法上传")

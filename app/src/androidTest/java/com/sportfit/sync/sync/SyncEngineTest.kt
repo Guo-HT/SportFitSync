@@ -139,6 +139,47 @@ class SyncEngineTest {
     }
 
     @Test
+    fun synced_activities_store_their_content_fingerprint() = runTest {
+        // 账本必须记住「这份数据的指纹」：下次源平台换个 activityId 把同一条
+        // 运动记录再发一次时，只有指纹能认出它是同一份数据。
+        engine.run(
+            SyncRequest(
+                source = Platform.DEMO,
+                target = Platform.DEMO,
+                selectedIds = setOf("demo-1"),
+            ),
+        ).toList()
+
+        val record = db.syncDao().record("demo", "demo", "demo-1")
+        assertEquals(SyncStatus.SYNCED.code, record?.status)
+        assertTrue(
+            "同步成功的活动必须写入内容指纹",
+            !record?.fingerprint.isNullOrEmpty(),
+        )
+    }
+
+    @Test
+    fun the_run_log_reports_the_dedup_breakdown() = runTest {
+        // 拉完列表立刻比对去重，并且把各分类的条数报出来 —— 用户要能在
+        // 同步日志里看见「哪些被去重了」。
+        val events = engine.run(SyncRequest(Platform.DEMO, Platform.DEMO)).toList()
+
+        val breakdown = events.filterIsInstance<SyncEvent.Log>()
+            .map { it.message }
+            .firstOrNull { it.startsWith("比对去重") }
+
+        assertTrue(
+            "同步日志里必须有比对去重的分类明细，实际日志：" +
+                events.filterIsInstance<SyncEvent.Log>().map { it.message },
+            breakdown != null,
+        )
+        assertTrue(
+            "分类明细里要报出「已同步」的条数：$breakdown",
+            breakdown!!.contains("已同步"),
+        )
+    }
+
+    @Test
     fun a_failed_activity_stays_eligible_for_the_next_run() = runTest {
         engine.run(
             SyncRequest(

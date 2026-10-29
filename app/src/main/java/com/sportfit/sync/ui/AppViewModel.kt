@@ -595,8 +595,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 // 拉全量历史：本地表就是「有哪些活动」的真相来源，
                 // 之后的每次同步只从它上面做增量。
-                val count = syncEngine.refreshSourceActivities(direction)
-                _message.value = "本地活动列表已更新：$count 条"
+                // 拉完立刻和账本比对，界面上的「已同步」才是最新的。
+                val summary = syncEngine.refreshSourceActivities(direction)
+                _message.value = buildString {
+                    append("本地活动列表已更新：${summary.localTotal} 条")
+                    append("（已同步 ${summary.alreadySynced}")
+                    if (summary.duplicatesByContent > 0) {
+                        append(" · 内容相同 ${summary.duplicatesByContent}")
+                    }
+                    append(" · 待同步 ${summary.pending}）")
+                }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
