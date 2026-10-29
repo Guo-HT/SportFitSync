@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -33,7 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,11 +87,17 @@ fun ActivityPickerScreen(
     var filter by remember(direction) { mutableStateOf(PickerFilter.SYNCABLE) }
     var pendingBatch by remember(direction) { mutableStateOf<BatchAction?>(null) }
 
-    val visible = when (filter) {
+    val filtered = when (filter) {
         PickerFilter.SYNCABLE -> items.filter { it.status != SyncStatus.SYNCED && !it.excluded }
         PickerFilter.ALL -> items
         PickerFilter.EXCLUDED -> items.filter { it.excluded }
     }
+    // ---- 分页 -----------------------------------------------------------
+    // 活动可能有上千条，一次全铺开既费内存又让人找不到北。
+    // 每页 50 条：滚到底自动续下一页，也可以点「加载更多」手动加。
+    var loadedCount by remember(direction) { mutableIntStateOf(PAGE_SIZE) }
+    val visible = filtered.take(loadedCount)
+    val hasMore = filtered.size > visible.size
     val selectable = visible.filterNot { it.excluded }
     // 勾选语义：**统一是「我挑中的这些条」**。
     // 以前已排除的活动把复选框禁掉了（那时候勾选只代表「要同步」，
@@ -102,6 +112,18 @@ fun ActivityPickerScreen(
     // 同步/导出只认「没被排除且在当前列表里」的勾选项：
     // 已排除的活动本来就不该被同步。
     val syncableSelected = selectedVisible.filterNot { it.excluded }.map { it.activityId }.toSet()
+
+    // 列表滚动位置：滚到底附近时自动续下一页。
+    val listState = rememberLazyListState()
+    val nearEnd by remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisible >= visible.size - 3
+        }
+    }
+    LaunchedEffect(nearEnd, hasMore) {
+        if (nearEnd && hasMore) loadedCount += PAGE_SIZE
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -229,8 +251,9 @@ fun ActivityPickerScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // 全选/反选针对**当前可见的全部**条目，包括已排除的——
+                // 全选/反选针对**当前已经显示出来的**条目（含已排除的）——
                 // 在「已排除」筛选下正是靠它把要恢复的条目一次性挑出来。
+                // 只选已显示的：没滚到的条目用户根本没看见，选中了反而意外。
                 TextButton(onClick = { selected = visible.map { it.activityId }.toSet() }) {
                     Text("全选")
                 }
@@ -245,13 +268,14 @@ fun ActivityPickerScreen(
         HairLine()
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             // 底部按操作栏的高度留白：最后一行要能完整滚出来，
             // 不能被底部操作栏切掉一半（日期行整行看不见、徽章被压扁）。
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 72.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (visible.isEmpty()) {
+            if (filtered.isEmpty()) {
                 item {
                     // 文案要区分「整个列表是空的」和「当前筛选没有匹配项」：
                     // 否则在「待同步」「已排除」筛选下会误报「还没有活动列表」，
@@ -301,6 +325,37 @@ fun ActivityPickerScreen(
                         }
                     },
                 )
+            }
+            // ---- 分页页脚 --------------------------------------------------
+            // 不用另起一行占地方：并到列表末尾，滚到底自然就看到了。
+            if (filtered.isNotEmpty()) {
+                item(key = "picker-footer") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (hasMore) {
+                                "已显示 ${visible.size} / ${filtered.size} 条"
+                            } else {
+                                "共 ${filtered.size} 条，已全部显示"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (hasMore) {
+                            OutlinedButton(
+                                onClick = { loadedCount += PAGE_SIZE },
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                            ) {
+                                Text("加载更多")
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -396,6 +451,9 @@ fun ActivityPickerScreen(
         )
     }
 }
+
+/** 每页显示多少条活动。 */
+private const val PAGE_SIZE = 50
 
 /** 列表的筛选口径。 */
 private enum class PickerFilter(val label: String) {
