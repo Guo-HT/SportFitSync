@@ -9,6 +9,7 @@
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4.svg?logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![Room](https://img.shields.io/badge/Room-2.7.1-2E8B57.svg)](https://developer.android.com/training/data-storage/room)
 [![minSdk](https://img.shields.io/badge/minSdk-26-34A853.svg)](https://developer.android.com/about/versions)
+[![License](https://img.shields.io/badge/License-Apache%202.0-D22128.svg?logo=apache)](LICENSE)
 
 [快速开始](#快速开始) · [功能特性](#功能特性) · [同步方向矩阵](#同步方向矩阵) · [架构](#架构) ·
 [开发手册](docs/development-handbook.md) · [平台协议](docs/platform-protocols.md) · [设计稿](docs/design-and-ux-proposal.md)
@@ -513,7 +514,27 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 
 ## 📄 许可证
 
-本仓库目前**尚未附带 LICENSE 文件**。在补充许可声明前，请勿将其视为已授权分发。
+本项目采用 **[Apache License 2.0](LICENSE)** 授权。
+
+```
+Copyright 2026 Guo-HT
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+第三方依赖各自遵循其原始许可证，依赖清单见
+[`app/build.gradle.kts`](app/build.gradle.kts)。上游项目与参考实现的署名见
+[`NOTICE`](NOTICE)。
 
 ---
 

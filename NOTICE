@@ -1,0 +1,32 @@
+SportFit Sync for Android
+Copyright 2026 Guo-HT
+
+This product includes software developed as an independent Android
+reimplementation of the sync logic originally published in:
+
+    garmin-sync-coros
+    https://github.com/XiaoSiHwang/garmin-sync-coros
+    Copyright (c) the garmin-sync-coros contributors
+
+The original project is licensed by its own authors. This Android port
+rewrites the platform clients in Kotlin against the documented HTTP
+protocols rather than reusing that project's source code; the attribution
+above is given in recognition of its role as the functional reference for
+the behaviour reproduced here.
+
+The Garmin Connect authentication flow implemented under
+app/src/main/java/com/sportfit/sync/platform/garmin/ follows the public
+protocol documented by:
+
+    garth
+    https://github.com/matin/garth
+    Copyright (c) 2019 Matija Türk
+
+The Coros upload channel (OSS STS credential issuance) was tracked
+through the following upstream reports:
+
+    https://github.com/XiaoSiHwang/garmin-sync-coros/issues/41
+    https://github.com/XiaoSiHwang/garmin-sync-coros/pull/42
+
+Third-party dependencies are distributed under their own licenses; see
+app/build.gradle.kts for the dependency list.
