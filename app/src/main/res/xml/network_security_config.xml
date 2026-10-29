@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (HTTP) is disabled by default. OneLap's legacy endpoints are plain
+  HTTP, so only that exact host is whitelisted instead of turning cleartext on
+  globally.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">www.onelap.cn</domain>
+        <domain includeSubdomains="false">u.onelap.cn</domain>
+    </domain-config>
+</network-security-config>

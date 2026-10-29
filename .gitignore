@@ -1,0 +1,35 @@
+# Local build tooling (Gradle distribution + isolated Gradle user home) lives here.
+# Everything is disposable; nothing in this directory is part of the app source.
+.tools/
+.gradle-home/
+.android-home/
+.gradle/
+build/
+app/build/
+captures/
+.cxx/
+
+# Kotlin compiler session data (incremental compilation state).
+.kotlin/
+
+# Scratch dir for local experiments: relocated emulator AVD copies, sandbox
+# temp files, ad-hoc dumps. Nothing here is part of the app source.
+tmp/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+
+# Machine-specific
+local.properties
+
+# Scratch dir used when pulling the on-device database during verification.
+.dbcheck/
+
+# Scratch dirs for comparing against the upstream Python project during
+# integration debugging. Regenerate with:
+#   git clone --depth 1 https://github.com/XiaoSiHwang/garmin-sync-coros.git .upstream
+.upstream/
+.pysync/
+.research/
