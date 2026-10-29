@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import com.sportfit.sync.domain.Platform
+import com.sportfit.sync.ui.theme.LocalSurfacePalette
 
 /** A selectable platform pill. */
 @Composable
@@ -106,7 +107,7 @@ fun SectionCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = LocalSurfacePalette.current.card,
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,

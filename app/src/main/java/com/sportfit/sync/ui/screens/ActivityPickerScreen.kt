@@ -48,7 +48,7 @@ import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.Format
 import com.sportfit.sync.ui.components.EmptyState
 import com.sportfit.sync.ui.components.HairLine
-import com.sportfit.sync.ui.components.PlatformAvatar
+import com.sportfit.sync.ui.theme.LocalSurfacePalette
 import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.StatTile
 import com.sportfit.sync.ui.components.StatusBadge
@@ -261,11 +261,11 @@ private fun ActivityRow(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = LocalSurfacePalette.current.card,
             contentColor = MaterialTheme.colorScheme.onSurface,
             // 已排除的行只是「不能选」，不是「出错」：
             // 不做禁用态的灰化，否则「恢复」按钮会淡得看不清。
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            disabledContainerColor = LocalSurfacePalette.current.card,
             disabledContentColor = MaterialTheme.colorScheme.onSurface,
         ),
         border = BorderStroke(
@@ -277,34 +277,28 @@ private fun ActivityRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            PlatformAvatar(platform = platform, size = 40.dp)
-
+            // 这里不放平台头像：整页的活动都来自同一个平台，
+            // 顶部副标题已经写明「从 X 读取活动」，每行再挂一个徽章纯属重复，
+            // 还把「时间 · 距离 · 时长」挤到放不下（截断成 3.64…）。
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    item.name.ifBlank { item.activityId },
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${Format.date(item.startTime)} · ${Format.distance(item.distanceMeters)} · " +
-                            Format.duration(item.durationSec),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        item.name.ifBlank { item.activityId },
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        // 名称吃掉剩余宽度，「排除」按钮被推到行末、右对齐。
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(4.dp))
                     TextButton(
                         onClick = onToggleExclude,
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                        modifier = Modifier.height(24.dp),
+                        modifier = Modifier.height(26.dp),
                     ) {
                         Text(
                             if (item.excluded) "恢复" else "排除",
@@ -312,6 +306,16 @@ private fun ActivityRow(
                         )
                     }
                 }
+                // 第二行独占整行宽度：时间/距离/时长一定能完整显示。
+                Text(
+                    "${Format.date(item.startTime)} · ${Format.distance(item.distanceMeters)} · " +
+                        Format.duration(item.durationSec),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {

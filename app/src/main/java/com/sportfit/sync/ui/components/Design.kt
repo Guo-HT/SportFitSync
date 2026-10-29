@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.sportfit.sync.R
 import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.ui.theme.LocalHeroPalette
+import com.sportfit.sync.ui.theme.LocalSurfacePalette
 import com.sportfit.sync.ui.theme.NumericSmallTextStyle
 import com.sportfit.sync.ui.theme.PlatformPalette
 
@@ -69,11 +74,14 @@ fun AppBackground(
             painter = painterResource(R.drawable.ic_decor_rings),
             contentDescription = null,
             contentScale = ContentScale.Fit,
+            // 描边在 drawable 里写的是白色，浅色底上等于隐形（实测高通偏差 1/765），
+            // 所以这里用主题主色重新着色，深浅两套主题都能看见。
+            colorFilter = ColorFilter.tint(scheme.primary),
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .size(280.dp)
                 .offset(x = 96.dp, y = (-72).dp)
-                .graphicsLayer { alpha = 0.55f },
+                .graphicsLayer { alpha = 0.16f },
         )
         content()
     }
@@ -188,6 +196,49 @@ fun HeroCard(
 }
 
 /**
+ * 子页面标题栏：返回箭头 + 标题 + 副标题。
+ *
+ * 之前每个子页面自己写返回按钮，padding 各不相同（4dp / 8dp / 16dp），
+ * 标题基线也飘（y=172 / 200 / 201），翻页面时标题会「跳」。
+ * 现在统一成这一个组件：返回箭头 48dp 触达区 + 4dp 间隔 + 标题列。
+ */
+@Composable
+fun SubPageHeader(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Column {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
  * 统计小卡：一个数字 + 一个标签。
  *
  * 数字用等宽数字样式（[NumericSmallTextStyle]），刷新时不会左右跳。
@@ -203,7 +254,7 @@ fun StatTile(
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = LocalSurfacePalette.current.tile,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     ) {
         Column(
@@ -211,7 +262,8 @@ fun StatTile(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(value, style = NumericSmallTextStyle, color = accent)
-            Spacer(Modifier.height(2.dp))
+            // 数字 18sp + 标签 11sp，中间至少留 4dp，否则数字和标签挤成一团。
+            Spacer(Modifier.height(4.dp))
             Text(
                 label,
                 style = MaterialTheme.typography.labelSmall,
@@ -247,6 +299,9 @@ fun StatRow(
  * 平台图标徽章。
  *
  * 每个平台一个固定颜色，账号页和方向选择里一眼能认出是哪个平台。
+ *
+ * 底色用**实色**、图标用白色：早先用「平台色 14% 淡底 + 平台色图标」，
+ * Strava 橙的图标在淡底上对比度只有 2.5:1，基本糊掉（图形要 ≥3:1）。
  */
 @Composable
 fun PlatformAvatar(
@@ -259,13 +314,13 @@ fun PlatformAvatar(
         modifier = modifier
             .size(size)
             .clip(RoundedCornerShape(size / 3))
-            .background(color.copy(alpha = 0.14f)),
+            .background(color),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             platformIcon(platform),
             contentDescription = null,
-            tint = color,
+            tint = Color.White,
             modifier = Modifier.size(size * 0.55f),
         )
     }
@@ -404,7 +459,7 @@ fun BorderedSurface(
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = LocalSurfacePalette.current.card,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         content = { content() },
     )

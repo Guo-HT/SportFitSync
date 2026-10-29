@@ -146,6 +146,30 @@ private val DarkHero = HeroPalette(
 /** 头图配色，通过 [SportFitTheme] 注入。 */
 val LocalHeroPalette = staticCompositionLocalOf { LightHero }
 
+/**
+ * 卡片与小卡的底色。
+ *
+ * 浅色主题下页面底色是淡灰（#F6F7FB），如果卡片也用接近它的
+ * `surfaceContainerLow`（#F0F1F8），两者只差 2%，整页看上去像「一片白」，
+ * 卡片完全立不起来。所以浅色主题里卡片用纯白、小卡用浅灰；
+ * 深色主题反过来（页面底色接近纯黑，卡片用比底色亮一档的容器色）。
+ */
+@Immutable
+data class SurfacePalette(val card: Color, val tile: Color)
+
+private val LightSurfaces = SurfacePalette(
+    card = Color(0xFFFFFFFF),
+    tile = Color(0xFFF0F1F8),
+)
+
+private val DarkSurfaces = SurfacePalette(
+    card = Color(0xFF191A1F),
+    tile = Color(0xFF272A2F),
+)
+
+/** 卡片底色，通过 [SportFitTheme] 注入。 */
+val LocalSurfacePalette = staticCompositionLocalOf { LightSurfaces }
+
 @Composable
 fun SportFitTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -153,6 +177,7 @@ fun SportFitTheme(
 ) {
     CompositionLocalProvider(
         LocalHeroPalette provides if (darkTheme) DarkHero else LightHero,
+        LocalSurfacePalette provides if (darkTheme) DarkSurfaces else LightSurfaces,
     ) {
         MaterialTheme(
             colorScheme = if (darkTheme) DarkColors else LightColors,
