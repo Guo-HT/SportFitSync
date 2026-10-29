@@ -89,10 +89,19 @@ fun ActivityPickerScreen(
         PickerFilter.EXCLUDED -> items.filter { it.excluded }
     }
     val selectable = visible.filterNot { it.excluded }
-    // 批量操作的对象始终是「当前筛选结果」：
-    // 排除 = 可见且还没被排除的，恢复 = 可见且已被排除的。
-    val excludableIds = selectable.map { it.activityId }
-    val restorableIds = visible.filter { it.excluded }.map { it.activityId }
+    // 勾选语义：**统一是「我挑中的这些条」**。
+    // 以前已排除的活动把复选框禁掉了（那时候勾选只代表「要同步」，
+    // 已排除的本来就不该同步），结果在「已排除」筛选下根本挑不出条目，
+    // 批量恢复无从谈起。现在勾选一律可用，具体怎么用由当前筛选决定：
+    //   待同步/全部 → 批量排除勾选中的；已排除 → 批量恢复勾选中的。
+    val selectedVisible = visible.filter { it.activityId in selected }
+    // 批量排除的对象：勾选中、且还没被排除的。
+    val excludableIds = selectedVisible.filterNot { it.excluded }.map { it.activityId }
+    // 批量恢复的对象：勾选中、且已被排除的。
+    val restorableIds = selectedVisible.filter { it.excluded }.map { it.activityId }
+    // 同步/导出只认「没被排除且在当前列表里」的勾选项：
+    // 已排除的活动本来就不该被同步。
+    val syncableSelected = selectedVisible.filterNot { it.excluded }.map { it.activityId }.toSet()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -191,7 +200,7 @@ fun ActivityPickerScreen(
                     OutlinedButton(
                         onClick = { pendingBatch = BatchAction.Restore(restorableIds) },
                         enabled = restorableIds.isNotEmpty(),
-                    ) { Text("批量恢复") }
+                    ) { Text("批量恢复 ${restorableIds.size} 条") }
                 } else {
                     OutlinedButton(
                         onClick = { pendingBatch = BatchAction.Exclude(excludableIds) },
@@ -210,7 +219,7 @@ fun ActivityPickerScreen(
                                 MaterialTheme.colorScheme.error
                             },
                         ),
-                    ) { Text("批量排除") }
+                    ) { Text("批量排除 ${excludableIds.size} 条") }
                 }
             }
 
@@ -220,11 +229,13 @@ fun ActivityPickerScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(onClick = { selected = selectable.map { it.activityId }.toSet() }) {
+                // 全选/反选针对**当前可见的全部**条目，包括已排除的——
+                // 在「已排除」筛选下正是靠它把要恢复的条目一次性挑出来。
+                TextButton(onClick = { selected = visible.map { it.activityId }.toSet() }) {
                     Text("全选")
                 }
                 TextButton(onClick = {
-                    selected = selectable.map { it.activityId }.toSet() - selected
+                    selected = visible.map { it.activityId }.toSet() - selected
                 }) { Text("反选") }
                 TextButton(onClick = { selected = emptySet() }) { Text("清空") }
             }
@@ -307,8 +318,8 @@ fun ActivityPickerScreen(
             // Export is the escape hatch: it needs no target platform, so it
             // keeps working even when a platform's import path breaks.
             OutlinedButton(
-                onClick = { viewModel.startExport(selected) },
-                enabled = selected.isNotEmpty() && !loading,
+                onClick = { viewModel.startExport(syncableSelected) },
+                enabled = syncableSelected.isNotEmpty() && !loading,
                 // M3 默认的禁用态文字（onSurface 38%）只有 2.3:1，
                 // 主按钮即使是禁用态也必须看得清 —— 用 onSurfaceVariant（≈4.6:1）。
                 colors = ButtonDefaults.outlinedButtonColors(
@@ -322,8 +333,8 @@ fun ActivityPickerScreen(
                 Text("导出文件")
             }
             Button(
-                onClick = { viewModel.startSync(selectedIds = selected) },
-                enabled = selected.isNotEmpty(),
+                onClick = { viewModel.startSync(selectedIds = syncableSelected) },
+                enabled = syncableSelected.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(
                     disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -332,7 +343,7 @@ fun ActivityPickerScreen(
                     .weight(1.4f)
                     .height(50.dp),
             ) {
-                Text("同步 ${selected.size} 条")
+                Text("同步 ${syncableSelected.size} 条")
             }
         }
     }
@@ -365,6 +376,9 @@ fun ActivityPickerScreen(
                             is BatchAction.Exclude -> viewModel.excludeMany(direction, action.ids)
                             is BatchAction.Restore -> viewModel.unexcludeMany(direction, action.ids)
                         }
+                        // 操作完把这一批从勾选里去掉：被排除的会离开「待同步」视图，
+                        // 恢复的会离开「已排除」视图，留着勾选只是脏状态。
+                        selected = selected - action.ids.toSet()
                         pendingBatch = null
                     },
                     colors = if (action is BatchAction.Exclude) {
@@ -499,8 +513,8 @@ private fun ActivityRow(
                 }
                 Checkbox(
                     checked = checked,
+                    // 一律可勾：已排除的活动在「已排除」筛选下要能被挑出来批量恢复。
                     onCheckedChange = { onToggle() },
-                    enabled = !item.excluded,
                 )
             }
         }
