@@ -14,9 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
@@ -25,7 +23,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -48,11 +45,11 @@ import com.sportfit.sync.ui.Format
 import com.sportfit.sync.ui.components.EmptyState
 import com.sportfit.sync.ui.components.HairLine
 import com.sportfit.sync.ui.components.PlatformAvatar
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
 import com.sportfit.sync.ui.components.SoftChip
 import com.sportfit.sync.ui.components.StatusBadge
 import com.sportfit.sync.ui.components.StatusTone
+import com.sportfit.sync.ui.components.SubPageHeader
 
 /**
  * 账号管理页。
@@ -77,22 +74,13 @@ fun AccountsScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
-            ScreenHeader(
-                title = "账号管理",
-                subtitle = "凭据加密保存在本机",
-                icon = Icons.Filled.AccountCircle,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // 统一用公共的子页面标题栏：返回箭头 + 标题的位置和其它子页面完全一致。
+        SubPageHeader(
+            title = "账号管理",
+            onBack = onBack,
+            subtitle = "凭据加密保存在本机",
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
 
         HairLine()
 
@@ -128,7 +116,8 @@ fun AccountsScreen(
             "凭据使用 Android Keystore 加密存储在本机；导出/备份不会包含账号信息。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            // 与卡片里的文字同一条基准线：页边距 16dp + 卡片内边距 16dp = 32dp。
+            modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
         )
     }
 
@@ -166,8 +155,8 @@ fun AccountsScreen(
  * 一个平台的账号卡。
  *
  * 上半部分是信息（点整块都能进编辑页），下半部分是操作按钮：
- * 主操作「添加/修改」是实心按钮，Strava 的「授权」是描边按钮，
- * 「删除」是文字按钮 + 错误色。
+ * 左侧是危险的「删除」（错误色文字按钮），右侧是主操作「添加/修改」（实心按钮）
+ * 与 Strava 的「授权」（描边按钮）。
  */
 @Composable
 private fun AccountCard(
@@ -236,7 +225,8 @@ private fun AccountCard(
             account?.region?.takeIf { it.isNotBlank() }?.let { region ->
                 SoftChip(
                     text = "区域：${regionLabel(platform, region)}",
-                    color = MaterialTheme.colorScheme.primary,
+                    // 中性色更耐看：主色蓝配 12% 淡底在浅色主题下对比度偏紧。
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     icon = Icons.Filled.Public,
                 )
             }
@@ -256,6 +246,24 @@ private fun AccountCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 危险操作靠左，主操作靠右，中间用弹性空隙撑开，
+            // 按钮组才不会挤在卡片左边、右边空一大片。
+            if (account != null) {
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("删除") }
+            }
+            Spacer(Modifier.weight(1f))
+            // Strava needs a second step: credentials first, then OAuth consent.
+            if (platform == Platform.STRAVA &&
+                account != null &&
+                account.status != AccountEntity.STATUS_CONNECTED
+            ) {
+                OutlinedButton(onClick = onAuthorize) { Text("授权") }
+            }
             Button(onClick = onEdit) {
                 Icon(
                     if (account == null) Icons.Filled.Add else Icons.Filled.Edit,
@@ -264,21 +272,6 @@ private fun AccountCard(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(if (account == null) "添加" else "修改")
-            }
-            // Strava needs a second step: credentials first, then OAuth consent.
-            if (platform == Platform.STRAVA &&
-                account != null &&
-                account.status != AccountEntity.STATUS_CONNECTED
-            ) {
-                OutlinedButton(onClick = onAuthorize) { Text("授权") }
-            }
-            if (account != null) {
-                TextButton(
-                    onClick = onDelete,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) { Text("删除") }
             }
         }
     }

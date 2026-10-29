@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
@@ -23,7 +22,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -40,10 +38,9 @@ import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.components.BorderedSurface
 import com.sportfit.sync.ui.components.HairLine
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SecretField
 import com.sportfit.sync.ui.components.SectionCard
-import com.sportfit.sync.ui.components.platformIcon
+import com.sportfit.sync.ui.components.SubPageHeader
 
 /**
  * Add or edit one platform account.
@@ -77,21 +74,14 @@ fun AccountEditScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
-            ScreenHeader(
-                title = "${if (isExisting) "修改" else "添加"} ${platform.displayName}",
-                icon = platformIcon(platform),
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // 统一用公共的子页面标题栏：返回箭头 + 标题的位置和其它子页面完全一致。
+        // 副标题与「账号管理」页保持同一行，标题基线在两页之间也不会跳。
+        SubPageHeader(
+            title = "${if (isExisting) "修改" else "添加"} ${platform.displayName}",
+            onBack = onBack,
+            subtitle = "凭据加密保存在本机",
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
 
         HairLine()
 

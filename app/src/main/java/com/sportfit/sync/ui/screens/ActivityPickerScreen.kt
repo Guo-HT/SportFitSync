@@ -9,23 +9,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -49,10 +48,10 @@ import com.sportfit.sync.ui.Format
 import com.sportfit.sync.ui.components.EmptyState
 import com.sportfit.sync.ui.components.HairLine
 import com.sportfit.sync.ui.theme.LocalSurfacePalette
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.StatTile
 import com.sportfit.sync.ui.components.StatusBadge
 import com.sportfit.sync.ui.components.StatusTone
+import com.sportfit.sync.ui.components.SubPageHeader
 import com.sportfit.sync.ui.theme.NumericSmallTextStyle
 import kotlinx.coroutines.flow.map
 
@@ -88,24 +87,26 @@ fun ActivityPickerScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                // 横向留白交给各子块自己加：标题要用 8dp 起点（和其它子页面一致），
+                // 其余内容用 16dp，统一放在这一层会让标题位置差 8dp。
+                .padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // ---- 标题 ------------------------------------------------------
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                }
-                ScreenHeader(
-                    title = "选择活动同步",
-                    subtitle = "从 ${direction.source.displayName} 读取活动，同步到 ${direction.target.displayName}",
-                    icon = Icons.Filled.Checklist,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            // 用公共的 SubPageHeader：返回箭头 + 标题的 padding 各子页面统一，
+            // 否则翻页面时标题会「跳」。
+            SubPageHeader(
+                title = "选择活动同步",
+                onBack = onBack,
+                subtitle = "从 ${direction.source.displayName} 读取活动，同步到 ${direction.target.displayName}",
+                modifier = Modifier.padding(start = 8.dp, end = 16.dp, bottom = 4.dp),
+            )
 
             // ---- 统计 ------------------------------------------------------
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 StatTile(
                     label = "活动总数",
                     value = items.size.toString(),
@@ -145,7 +146,9 @@ fun ActivityPickerScreen(
                             modifier = Modifier.size(18.dp),
                         )
                     }
-                    Text("  拉取最新列表")
+                    // 不要手写空格给图标让位：Button 自己会在图标和文字之间留 8dp，
+                    // 手写空格会把可见文字整体顶偏（实测右偏 15~16dp）。
+                    Text("拉取最新列表")
                 }
                 FilterChip(
                     selected = showSynced,
@@ -170,7 +173,9 @@ fun ActivityPickerScreen(
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
+            // 底部按操作栏的高度留白：最后一行要能完整滚出来，
+            // 不能被底部操作栏切掉一半（日期行整行看不见、徽章被压扁）。
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 72.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (visible.isEmpty()) {
@@ -221,6 +226,12 @@ fun ActivityPickerScreen(
             OutlinedButton(
                 onClick = { viewModel.startExport(selected) },
                 enabled = selected.isNotEmpty() && !loading,
+                // M3 默认的禁用态文字（onSurface 38%）只有 2.3:1，
+                // 主按钮即使是禁用态也必须看得清 —— 用 onSurfaceVariant（≈4.6:1）。
+                colors = ButtonDefaults.outlinedButtonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp),
@@ -230,6 +241,10 @@ fun ActivityPickerScreen(
             Button(
                 onClick = { viewModel.startSync(selectedIds = selected) },
                 enabled = selected.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
                 modifier = Modifier
                     .weight(1.4f)
                     .height(50.dp),
@@ -243,8 +258,8 @@ fun ActivityPickerScreen(
 /**
  * 一条活动。
  *
- * 左边平台徽章（一眼看出这条活动来自哪个平台），中间名称 + 时间/距离/时长，
- * 右边状态标签 + 复选框。整行可点切换选中，「排除 / 恢复」是行内独立操作。
+ * 左边是活动名 + 次要行（时间/距离/时长），右边是状态标签 + 复选框，
+ * 「排除 / 恢复」跟在活动名后面。整行可点切换选中。
  */
 @Composable
 private fun ActivityRow(
@@ -308,8 +323,7 @@ private fun ActivityRow(
                 }
                 // 第二行独占整行宽度：时间/距离/时长一定能完整显示。
                 Text(
-                    "${Format.date(item.startTime)} · ${Format.distance(item.distanceMeters)} · " +
-                        Format.duration(item.durationSec),
+                    activityMeta(item),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -318,7 +332,16 @@ private fun ActivityRow(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 状态徽章 + 复选框作为一个整体靠右收口。
+            // Checkbox 的触达区有 48dp、可见方框只有 20dp，
+            // 直接排在右边会在徽章后面空出 60dp 左右的死区；
+            // 整组右移 14dp（正好是触达区多出来的边距），
+            // 可见方框就贴住了卡片内边距，触达区仍然落在卡片范围内。
+            Row(
+                modifier = Modifier.offset(x = 14.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 when {
                     item.excluded -> StatusBadge("已排除", StatusTone.NEUTRAL)
                     item.status == SyncStatus.SYNCED -> StatusBadge("已同步", StatusTone.OK)
@@ -336,6 +359,22 @@ private fun ActivityRow(
 }
 
 /**
+ * 活动的次要信息行：「开始时间 · 距离 · 时长」。
+ *
+ * 缺哪个字段就把**整个字段连同分隔符一起省掉** —— 否则行尾会留下一个
+ * 悬空的「· —」（Format 对缺失值返回破折号）。
+ * 不改公共的 Format：别的页面也在用它。
+ */
+private fun activityMeta(item: AppViewModel.PickerItem): String {
+    val parts = buildList {
+        Format.date(item.startTime).takeIf { it != "—" }?.let { add(it) }
+        Format.distance(item.distanceMeters).takeIf { it != "—" }?.let { add(it) }
+        Format.duration(item.durationSec).takeIf { it != "—" }?.let { add(it) }
+    }
+    return parts.joinToString(" · ")
+}
+
+/**
  * 「已选」统计卡。
  *
  * StatTile 的数字颜色由 StatusTone 决定（没有「主色」这一档），
@@ -350,10 +389,11 @@ private fun SelectedStatTile(
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+        // 实色底 + 主色边框：半透明叠加出来的边框只有 1.7:1，几乎看不见。
+        color = MaterialTheme.colorScheme.primaryContainer,
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+            MaterialTheme.colorScheme.primary,
         ),
     ) {
         Column(

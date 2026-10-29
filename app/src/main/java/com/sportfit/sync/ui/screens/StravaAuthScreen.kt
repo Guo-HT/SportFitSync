@@ -13,14 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,8 +35,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.sportfit.sync.platform.strava.StravaOAuth
 import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.components.HairLine
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.SubPageHeader
 
 /**
  * Drives Strava's OAuth2 authorization page in a WebView and intercepts the
@@ -69,22 +66,14 @@ fun StravaAuthScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onDone) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
-            ScreenHeader(
-                title = "Strava 授权",
-                subtitle = "授权后 App 才能读取你的活动",
-                icon = Icons.Filled.Lock,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // 用公共的 SubPageHeader：返回箭头 + 标题的 padding 与其它子页面一致，
+        // 否则翻页面时标题会「跳」。
+        SubPageHeader(
+            title = "Strava 授权",
+            onBack = onDone,
+            subtitle = "授权后 App 才能读取你的活动",
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
 
         HairLine()
 
@@ -187,7 +176,8 @@ fun StravaAuthScreen(
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                         )
-                        Text("  打开授权页")
+                        // 不要手写空格给图标让位：Button 自己会在图标和文字之间留 8dp。
+                        Text("打开授权页")
                     }
                 }
             }

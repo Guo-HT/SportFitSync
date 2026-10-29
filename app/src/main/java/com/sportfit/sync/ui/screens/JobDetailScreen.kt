@@ -13,12 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,11 +34,12 @@ import com.sportfit.sync.data.local.SyncLogEntity
 import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.Format
+import com.sportfit.sync.ui.components.HairLine
 import com.sportfit.sync.ui.components.InfoRow
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
 import com.sportfit.sync.ui.components.StatRow
 import com.sportfit.sync.ui.components.StatusBadge
+import com.sportfit.sync.ui.components.SubPageHeader
 import com.sportfit.sync.ui.components.jobStatusLabel
 import com.sportfit.sync.ui.components.jobStatusTone
 
@@ -57,23 +55,14 @@ fun JobDetailScreen(
     val failures = remember(logs) { failureEntries(logs) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ---- 顶部：返回 + 标题 ----------------------------------------------
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
-            ScreenHeader(
-                title = "同步详情",
-                subtitle = job?.let { directionLabel(it) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-        HorizontalDivider()
+        // 统一用公共的子页面标题栏：返回箭头 + 标题的位置和其它子页面完全一致。
+        SubPageHeader(
+            title = "同步详情",
+            onBack = onBack,
+            subtitle = job?.let { directionLabel(it) },
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
+        HairLine()
 
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -105,14 +94,14 @@ private fun SummaryCard(job: SyncJobEntity) {
                     rawKey = job.sourcePlatform,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(IconColumnGap))
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = "同步到",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(IconColumnGap))
                 PlatformIdentity(
                     platform = Platform.fromKey(job.targetPlatform),
                     rawKey = job.targetPlatform,
@@ -123,18 +112,25 @@ private fun SummaryCard(job: SyncJobEntity) {
             StatusBadge(text = jobStatusLabel(job.status), tone = jobStatusTone(job.status))
         }
 
-        StatRow(
-            tiles = listOf(
-                "成功" to job.okCount.toString(),
-                "重复" to job.dupCount.toString(),
-                "失败" to job.failCount.toString(),
-            ),
-            tone = jobStatusTone(job.status),
-        )
+        // 计数与时间：缩进一个图标列，跟上面的平台名是同一条竖线。
+        Column(
+            modifier = Modifier.padding(start = IconColumnSize + IconColumnGap),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            StatRow(
+                tiles = listOf(
+                    "成功" to job.okCount.toString(),
+                    "重复" to job.dupCount.toString(),
+                    "失败" to job.failCount.toString(),
+                ),
+                tone = jobStatusTone(job.status),
+            )
 
-        InfoRow("开始时间", Format.dateTime(job.startedAt))
-        InfoRow("耗时", Format.elapsed(job.startedAt, job.finishedAt))
-        job.message?.let { InfoRow("结果", it) }
+            // 没有值的那几行整行不显示，不要让「—」的占位符漏到界面上。
+            job.startedAtOrNull()?.let { InfoRow("开始时间", it) }
+            job.elapsedOrNull()?.let { InfoRow("耗时", it) }
+            job.message?.let { InfoRow("结果", it) }
+        }
     }
 }
 

@@ -2,6 +2,7 @@ package com.sportfit.sync.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,12 +46,25 @@ import com.sportfit.sync.ui.components.jobStatusLabel
 import com.sportfit.sync.ui.components.jobStatusTone
 
 /**
+ * 卡片里的「图标列」宽度。
+ *
+ * 头像和时钟图标都放进这一列，两行的图标才落在同一条竖线上；
+ * 文字列统一从这一列之后开始，两行的文字同样对齐。
+ */
+internal val IconColumnSize = 26.dp
+
+/** 图标列与文字列之间的距离。 */
+internal val IconColumnGap = 6.dp
+
+/** [Format] 里表示「没有值」的占位符，不往外漏。 */
+internal const val EMPTY_PLACEHOLDER = "—"
+
+/**
  * 同步记录（历史）页。
  *
  * 每条记录一张卡：方向（源 → 目标）、时间与耗时、成功/重复/失败三个计数。
  * 整张卡可点，点开就是这次同步的详情页。
- */
-@Composable
+ */@Composable
 fun HistoryScreen(
     viewModel: AppViewModel,
     onOpenJob: (Long) -> Unit,
@@ -130,20 +144,32 @@ private fun JobCard(job: SyncJobEntity, onClick: () -> Unit) {
             }
 
             // ---- 第二行：开始时间 + 耗时 --------------------------------------
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Schedule,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "${Format.dateTime(job.startedAt)} · " +
-                        "耗时 ${Format.elapsed(job.startedAt, job.finishedAt)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            val startedAt = job.startedAtOrNull()
+            val elapsed = job.elapsedOrNull()
+            if (startedAt != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 时钟图标放进和头像一样宽的图标列：两行的图标同一条竖线，
+                    // 两行的文字也就从同一条竖线开始。
+                    Box(
+                        modifier = Modifier.size(IconColumnSize),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(IconColumnGap))
+                    Text(
+                        // 算不出耗时的时候 [Format.elapsed] 返回「—」，
+                        // 直接拼上去就成了「10-07 17:58 · 耗时 —」；这种情况整段省略。
+                        text = if (elapsed != null) "$startedAt · 耗时 $elapsed" else startedAt,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             // ---- 第三行：成功 / 重复 / 失败 -----------------------------------
@@ -173,6 +199,8 @@ private fun JobCard(job: SyncJobEntity, onClick: () -> Unit) {
 /**
  * 平台徽章 + 名称。
  *
+ * 徽章占满图标列，名称从文字列开始 —— 同一张卡里的其它行也用这两列，
+ * 所以两行的图标、文字各自在同一条竖线上。
  * 平台认不出来（历史里存了已下线的平台 key）时退化成普通标签，保证信息不丢。
  * 名称过长时省略号收尾 —— 徽章大小固定，宽度不够就压缩名字。
  */
@@ -187,8 +215,8 @@ internal fun PlatformIdentity(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (platform != null) {
-            PlatformAvatar(platform = platform, size = 26.dp)
-            Spacer(Modifier.width(6.dp))
+            PlatformAvatar(platform = platform, size = IconColumnSize)
+            Spacer(Modifier.width(IconColumnGap))
             Text(
                 text = platform.displayName,
                 style = MaterialTheme.typography.titleSmall,
@@ -217,6 +245,27 @@ internal fun SyncJobEntity.extraNote(): String? {
     if (note.isEmpty()) return null
     val canonical = "成功 $okCount，重复 $dupCount，失败 $failCount"
     return if (note == canonical) null else note
+}
+
+/**
+ * 开始时间；没有值时返回 null。
+ *
+ * [Format] 用「—」表示没有值，那个占位符不该原样出现在界面上。
+ */
+internal fun SyncJobEntity.startedAtOrNull(): String? {
+    val text = Format.dateTime(startedAt)
+    return if (text == EMPTY_PLACEHOLDER) null else text
+}
+
+/**
+ * 这次同步的耗时；算不出来时返回 null。
+ *
+ * 耗时不到一秒（或者还没开始）时 [Format.elapsed] 会返回「—」，
+ * 这时候整段「耗时 …」都不显示，而不是显示「耗时 —」。
+ */
+internal fun SyncJobEntity.elapsedOrNull(): String? {
+    val text = Format.elapsed(startedAt, finishedAt)
+    return if (text == EMPTY_PLACEHOLDER) null else text
 }
 
 

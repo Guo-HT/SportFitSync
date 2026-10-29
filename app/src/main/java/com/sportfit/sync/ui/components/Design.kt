@@ -163,7 +163,10 @@ fun HeroCard(
                 .background(Brush.linearGradient(listOf(hero.start, hero.end)))
                 .padding(20.dp),
         ) {
-            Column(modifier = Modifier.fillMaxWidth(0.68f)) {
+            // 0.62 而不是 0.68：插画放大到 120dp 后，它的可见圆环左沿
+            // （矢量里圆心 60、外径 104.5，占画布的 87.1%）会正好压到
+            // 标题列的右边缘上，白圆环和白按钮互相吃掉。按 0.62 留出 ~6dp 缝。
+            Column(modifier = Modifier.fillMaxWidth(0.62f)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.headlineMedium,
@@ -188,7 +191,7 @@ fun HeroCard(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .size(116.dp)
+                    .size(120.dp)
                     .graphicsLayer { alpha = 0.95f },
             )
         }

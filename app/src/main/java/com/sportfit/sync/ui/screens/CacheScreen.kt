@@ -30,7 +30,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -51,10 +50,9 @@ import com.sportfit.sync.cache.CacheCategory
 import com.sportfit.sync.cache.CacheManager
 import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.components.HairLine
-import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.SubPageHeader
 import com.sportfit.sync.ui.components.SoftChip
-import com.sportfit.sync.ui.theme.NumericSmallTextStyle
 import com.sportfit.sync.ui.theme.NumericTextStyle
 
 /**
@@ -74,21 +72,14 @@ fun CacheScreen(
     var pendingDangerous by remember { mutableStateOf<CacheCategory?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
-            ScreenHeader(
-                title = "缓存与存储",
-                icon = Icons.Filled.CleaningServices,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // 标题栏统一用公共组件：返回箭头 + 标题的起点和其它子页面完全一致，
+        // 翻页面时标题不再「跳」。
+        SubPageHeader(
+            title = "缓存与存储",
+            onBack = onBack,
+            subtitle = "占用、分类清理与危险操作",
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
         HairLine()
 
         Column(
@@ -107,6 +98,7 @@ fun CacheScreen(
                     Column {
                         Text(
                             CacheManager.formatBytes(snapshot.totalBytes),
+                            // 两个数字用同一档字号 —— 一大一小并排会像两套排版。
                             style = NumericTextStyle,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -119,7 +111,7 @@ fun CacheScreen(
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             CacheManager.formatBytes(snapshot.safeBytes),
-                            style = NumericSmallTextStyle,
+                            style = NumericTextStyle,
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
@@ -241,6 +233,8 @@ private fun UsageBar(category: CacheCategory, totalBytes: Long) {
     } else {
         0f
     }
+    // 数值与左侧标签同一档字号 —— 小两号会像脚注。
+    val valueStyle = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum")
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -250,7 +244,7 @@ private fun UsageBar(category: CacheCategory, totalBytes: Long) {
             Text(category.title, style = MaterialTheme.typography.bodyMedium)
             Text(
                 CacheManager.formatBytes(category.bytes),
-                style = MaterialTheme.typography.bodySmall,
+                style = valueStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -258,11 +252,13 @@ private fun UsageBar(category: CacheCategory, totalBytes: Long) {
             progress = { ratio },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp),
+                .height(6.dp),
+            // 主色但压一层透明度：100% 时也只是「浅轨道 + 一条柔和的主色」，
+            // 而不是一整块高饱和蓝压在白卡片上。
             color = if (category.dangerous) {
-                MaterialTheme.colorScheme.error
+                MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
             } else {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             },
             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         )

@@ -115,14 +115,8 @@ fun SettingsScreen(
                 },
             )
             HairLine()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("间隔", style = MaterialTheme.typography.bodyMedium)
-                SoftChip("${settings.backgroundIntervalHours} 小时")
-            }
+            // 当前值由下面那排 chip 自己表达，这里不再重复一个「N 小时」标签。
+            Text("间隔", style = MaterialTheme.typography.bodyMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 INTERVAL_OPTIONS.forEach { hours ->
                     FilterChip(
@@ -229,6 +223,9 @@ fun SettingsScreen(
  * 账号分组里的一行：平台头像 + 名称 + 状态 + 本地活动条数。
  *
  * 整行可点，进账号管理页。
+ *
+ * 状态徽章是**右对齐的固定列**：它跟在有弹性的文字列后面，右侧边缘统一落在内容区右缘，
+ * 平台名长短不会把它顶来顶去（否则五行的徽章起点能差出 100 多像素，看着像在抖）。
  */
 @Composable
 private fun AccountRow(
@@ -248,23 +245,19 @@ private fun AccountRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        // 顶对齐：徽章与平台名同在第一行，几行的徽章连成一条整齐的横线。
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PlatformAvatar(platform = platform, size = 40.dp)
         Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(platform.displayName, style = MaterialTheme.typography.titleMedium)
-                StatusBadge(accountBadgeText(account), accountBadgeTone(account))
-            }
+            Text(platform.displayName, style = MaterialTheme.typography.titleMedium)
             Text(
                 accountDetailText(account, email),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // 只有真的存了活动才多这一行，没有数据时整行就两行，节奏一致。
             if (activityCount > 0) {
                 Text(
                     "本地已存 $activityCount 条活动",
@@ -273,11 +266,7 @@ private fun AccountRow(
                 )
             }
         }
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        StatusBadge(accountBadgeText(account), accountBadgeTone(account))
     }
 }
 
@@ -295,14 +284,19 @@ private fun accountBadgeTone(account: AccountEntity?): StatusTone = when (accoun
     else -> StatusTone.WARN
 }
 
-/** 有邮箱显示邮箱，没有就退回状态说明（与账号管理页一致）。 */
+/**
+ * 徽章下方的详情行。
+ *
+ * 徽章已经写了状态，详情行就**不再重复同一句话**：
+ * 有邮箱显示邮箱，否则给一句有信息量的补充说明。
+ */
 private fun accountDetailText(account: AccountEntity?, email: String?): String {
     if (!email.isNullOrBlank() && email != "未配置") return email
     return when (account?.status) {
-        AccountEntity.STATUS_CONNECTED -> "已连接 · ${Format.dateTime(account.lastVerifiedAt)}"
-        AccountEntity.STATUS_ERROR -> account.lastError ?: "登录失败"
-        null -> "未配置"
-        else -> "待登录验证"
+        AccountEntity.STATUS_CONNECTED -> "上次验证 ${Format.dateTime(account.lastVerifiedAt)}"
+        AccountEntity.STATUS_ERROR -> account.lastError ?: "登录失败，请重新登录"
+        null -> "尚未添加凭据"
+        else -> "尚未完成登录验证"
     }
 }
 

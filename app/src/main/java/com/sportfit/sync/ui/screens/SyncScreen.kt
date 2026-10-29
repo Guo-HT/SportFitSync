@@ -148,7 +148,8 @@ fun SyncScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            // 底部多留一截：否则最后一行 chip 正好卡在视口底边上，会被切掉半截。
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ScreenHeader(
@@ -172,9 +173,10 @@ fun SyncScreen(
                 Button(
                     onClick = { startWithWarning { viewModel.startSync() } },
                     enabled = canSync,
-                    // 留一点右边距：头图右侧是插画，按钮顶到头会跟插画蹭上。
+                    // 撑满标题列：按钮和上面的标题共用一条右边缘，
+                    // 看起来是一整列，而不是浮在卡片中间的一块。
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
+                        .fillMaxWidth()
                         .heightIn(min = 52.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = hero.onHero,
@@ -187,7 +189,7 @@ fun SyncScreen(
                     ),
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Text("  一键同步全部", style = MaterialTheme.typography.titleMedium)
+                    Text("一键同步全部", style = MaterialTheme.typography.titleMedium)
                 }
             },
         )
@@ -212,7 +214,7 @@ fun SyncScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Filled.PersonAdd, contentDescription = null)
-                    Text("  去添加账号")
+                    Text("去添加账号")
                 }
             }
         }
@@ -225,7 +227,7 @@ fun SyncScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Filled.Checklist, contentDescription = null)
-            Text("  选择活动同步")
+            Text("选择活动同步")
         }
 
         // ---- 统计：有多少东西要搬 -------------------------------------------
