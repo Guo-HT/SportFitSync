@@ -165,45 +165,28 @@ fun ActivityPickerScreen(
                 }
             }
 
-            // ---- 筛选 ------------------------------------------------------
+            // ---- 筛选 + 批量操作 ---------------------------------------------
             // 三选一：默认「待同步」，另外两个用来查全量 / 查已排除。
+            // 批量按钮**并在这一行的右边**：它作用的就是当前筛选出来的那些活动，
+            // 放一起最说得通，也省掉一整行纵向空间（这一页顶部本来就很挤）。
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                PickerFilter.entries.forEach { option ->
-                    FilterChip(
-                        selected = filter == option,
-                        onClick = { filter = option },
-                        label = { Text(option.label) },
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PickerFilter.entries.forEach { option ->
+                        FilterChip(
+                            selected = filter == option,
+                            onClick = { filter = option },
+                            label = { Text(option.label) },
+                        )
+                    }
                 }
-            }
-
-            // ---- 批量选择 --------------------------------------------------
-            Row(
-                // 横向留白 16dp：和上面的拉取按钮、筛选 chips 对齐。
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(onClick = { selected = selectable.map { it.activityId }.toSet() }) {
-                    Text("全选")
-                }
-                TextButton(onClick = {
-                    selected = selectable.map { it.activityId }.toSet() - selected
-                }) { Text("反选") }
-                TextButton(onClick = { selected = emptySet() }) { Text("清空") }
-            }
-
-            // ---- 批量排除 / 批量恢复 -----------------------------------------
-            // 两个按钮互斥：在「已排除」筛选下只可能恢复，其它筛选下只可能排除，
-            // 不会出现两个含义打架的按钮同时挂在页面上。
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
+                // 两个按钮互斥：在「已排除」筛选下只可能恢复，其它筛选下只可能排除，
+                // 不会出现两个含义打架的按钮同时挂在页面上。
                 if (filter == PickerFilter.EXCLUDED) {
                     OutlinedButton(
                         onClick = { pendingBatch = BatchAction.Restore(restorableIds) },
@@ -230,6 +213,22 @@ fun ActivityPickerScreen(
                     ) { Text("批量排除") }
                 }
             }
+
+            // ---- 批量选择 --------------------------------------------------
+            Row(
+                // 横向留白 16dp：和上面的拉取按钮、筛选 chips 对齐。
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(onClick = { selected = selectable.map { it.activityId }.toSet() }) {
+                    Text("全选")
+                }
+                TextButton(onClick = {
+                    selected = selectable.map { it.activityId }.toSet() - selected
+                }) { Text("反选") }
+                TextButton(onClick = { selected = emptySet() }) { Text("清空") }
+            }
+
         }
 
         HairLine()
