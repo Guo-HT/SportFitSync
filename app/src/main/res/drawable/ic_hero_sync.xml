@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  首页头图：一条「循环箭头」里包着一条心电曲线。
+  循环箭头 = 数据在平台之间不停流转；心电曲线 = 运动数据本身。
+  画在深色渐变卡上，所以用白色 + 青色描边。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="132dp"
+    android:height="132dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- 循环箭头：留一个缺口，缺口处是箭头 -->
+    <path
+        android:pathData="M85.7,29.4 A40,40 0 1 1 34.3,29.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="9"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M94.9,37.1 L79.9,36.3 L91.5,22.5 Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- 心电曲线 -->
+    <path
+        android:pathData="M31,62 L43,62 L50,45 L58,79 L66,55 L74,62 L89,62"
+        android:strokeColor="#FF8BE9FD"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

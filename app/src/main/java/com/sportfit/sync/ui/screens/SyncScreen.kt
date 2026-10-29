@@ -4,25 +4,43 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,25 +56,38 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.sportfit.sync.BuildConfig
+import com.sportfit.sync.R
+import com.sportfit.sync.data.local.SyncJobEntity
 import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.ui.AppViewModel
 import com.sportfit.sync.ui.Format
+import com.sportfit.sync.ui.components.EmptyState
+import com.sportfit.sync.ui.components.HeroCard
 import com.sportfit.sync.ui.components.InfoRow
 import com.sportfit.sync.ui.components.PlatformChip
+import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.SoftChip
+import com.sportfit.sync.ui.components.StatTile
 import com.sportfit.sync.ui.components.StatusBadge
 import com.sportfit.sync.ui.components.StatusTone
+import com.sportfit.sync.ui.components.jobStatusLabel
+import com.sportfit.sync.ui.components.jobStatusTone
+import com.sportfit.sync.ui.theme.LocalHeroPalette
 
 /**
  * Home tab.
  *
  * The interaction contract from the design review: pick a direction, then either
  * go straight through ("一键同步全部") or preview and cherry-pick first.
+ *
+ * 版式分三层：**头图卡**回答「现在是什么方向、现在能做什么」，
+ * **统计小卡**回答「有多少东西要搬」，再往下的卡片才放配置和细节操作。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -79,8 +110,9 @@ fun SyncScreen(
     // Rehearsal mode needs no account; every other platform does.
     val sourceReady = source == Platform.DEMO || accounts.any { it.platform == source.key }
     val targetReady = target == Platform.DEMO || accounts.any { it.platform == target.key }
+    val accountsReady = sourceReady && targetReady
     val selectablePlatforms = Platform.pickable(includeDemo = BuildConfig.DEBUG)
-    val canSync = sourceReady && targetReady && !runState.running
+    val canSync = accountsReady && !runState.running
 
     var showCorosWarning by remember { mutableStateOf(false) }
     var pendingStart by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -119,22 +151,116 @@ fun SyncScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("运动数据同步", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = "运动数据同步",
+            icon = Icons.Filled.Sync,
+            subtitle = "把运动数据从一个平台搬到另一个平台",
+        )
 
-        if (!sourceReady || !targetReady) {
-            SectionCard(title = "开始前需要配置账号") {
+        // ---- hero：方向 + 主行动 -------------------------------------------
+        HeroCard(
+            title = direction.label,
+            subtitle = if (accountsReady) {
+                "把 ${source.displayName} 的活动同步到 ${target.displayName}"
+            } else {
+                "先去配置账号"
+            },
+            trailing = {
+                // 按钮压在深色头图上，所以用头图自己的浅色做底、深色做字：
+                // 两套主题下都跳得出来，也不会跟卡片糊在一起。
+                val hero = LocalHeroPalette.current
+                Button(
+                    onClick = { startWithWarning { viewModel.startSync() } },
+                    enabled = canSync,
+                    // 留一点右边距：头图右侧是插画，按钮顶到头会跟插画蹭上。
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .heightIn(min = 52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = hero.onHero,
+                        contentColor = hero.start,
+                        // 禁用态单独给色：M3 默认是深色字压深色底，等于看不见；
+                        // 纯白底 + 淡色字又变成一块半透明的灰。
+                        // 所以这里用「半透的白底 + 深色字」：按下去会亮，但现在不亮。
+                        disabledContainerColor = hero.onHero.copy(alpha = 0.6f),
+                        disabledContentColor = hero.start,
+                    ),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Text("  一键同步全部", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+        )
+
+        // 没配好账号就没法同步，提示和入口紧挨着头图，最先被看到。
+        if (!accountsReady) {
+            SectionCard(
+                title = "开始前需要配置账号",
+                icon = Icons.Filled.AccountCircle,
+            ) {
                 Text(
-                    if (!sourceReady) "尚未配置 ${source.displayName} 账号" else "尚未配置 ${target.displayName} 账号",
+                    if (!sourceReady) {
+                        "尚未配置 ${source.displayName} 账号"
+                    } else {
+                        "尚未配置 ${target.displayName} 账号"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // 直达账号管理页：用户点这里的意图就是「去配账号」，
-                // 中间再插一层设置页只会把路径拉长。
-                OutlinedButton(onClick = onOpenAccounts) { Text("去添加账号") }
+                OutlinedButton(
+                    onClick = onOpenAccounts,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.PersonAdd, contentDescription = null)
+                    Text("  去添加账号")
+                }
             }
         }
 
-        // ---- direction picker -------------------------------------------
-        SectionCard(title = "同步方向") {
+        OutlinedButton(
+            // Always reachable: cached rows are viewable even before the
+            // accounts are configured, and the page explains what is missing.
+            onClick = { startWithWarning(onSelectActivities) },
+            enabled = !runState.running,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Checklist, contentDescription = null)
+            Text("  选择活动同步")
+        }
+
+        // ---- 统计：有多少东西要搬 -------------------------------------------
+        SectionCard(title = "活动状态", icon = Icons.Filled.Insights) {
+            if (summary.cached == 0) {
+                EmptyState(
+                    illustration = R.drawable.ic_empty_activities,
+                    title = "还没有活动列表",
+                    message = "配置好账号并拉取历史活动后，这里会显示待同步的数量。",
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatTile("本地共", "${summary.cached}", Modifier.weight(1f))
+                    StatTile("待同步", "${summary.pending}", Modifier.weight(1f))
+                    StatTile(
+                        label = "已同步",
+                        value = "${summary.synced}",
+                        modifier = Modifier.weight(1f),
+                        tone = if (summary.synced > 0) StatusTone.OK else StatusTone.NEUTRAL,
+                    )
+                    StatTile(
+                        label = "失败",
+                        value = "${summary.failed}",
+                        modifier = Modifier.weight(1f),
+                        tone = if (summary.failed > 0) StatusTone.ERROR else StatusTone.NEUTRAL,
+                    )
+                }
+            }
+        }
+
+        // ---- 方向选择 -------------------------------------------------------
+        SectionCard(title = "同步方向", icon = Icons.AutoMirrored.Filled.CompareArrows) {
             Text(
                 "源平台（读取活动）",
                 style = MaterialTheme.typography.bodySmall,
@@ -149,15 +275,27 @@ fun SyncScreen(
                     )
                 }
             }
+            // 交换按钮套一个圆形底座：比裸图标更像一个「把手」。
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                IconButton(onClick = { viewModel.swapDirection() }) {
-                    Icon(Icons.Filled.SwapHoriz, contentDescription = "交换方向")
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconButton(onClick = { viewModel.swapDirection() }) {
+                        Icon(
+                            Icons.Filled.SwapHoriz,
+                            contentDescription = "交换方向",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
                 }
             }
-
             Text(
                 "目标平台（写入活动）",
                 style = MaterialTheme.typography.bodySmall,
@@ -172,26 +310,16 @@ fun SyncScreen(
                     )
                 }
             }
-
-            InfoRow("方向", "${source.displayName} → ${target.displayName}")
-            InfoRow(
-                "活动状态",
-                if (summary.cached == 0) {
-                    "尚未拉取列表"
-                } else {
-                    "本地共 ${summary.cached} 条 · 待同步 ${summary.pending} · " +
-                        "已同步 ${summary.synced} · 失败 ${summary.failed}"
-                },
-            )
+            SoftChip(text = direction.label, icon = Icons.AutoMirrored.Filled.ArrowForward)
         }
 
-        // ---- saved strategies --------------------------------------------
-        SectionCard(title = "常用策略") {
+        // ---- 常用策略 -------------------------------------------------------
+        SectionCard(title = "常用策略", icon = Icons.Filled.Bookmark) {
             if (strategies.isEmpty()) {
-                Text(
-                    "把常用的方向保存为策略，之后可以一键切换（例如「Garmin → Coros」）。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                EmptyState(
+                    illustration = R.drawable.ic_empty_history,
+                    title = "还没有常用策略",
+                    message = "把常用的方向保存为策略，之后可以一键切换（例如「Garmin → Coros」）。",
                 )
             } else {
                 strategies.forEach { strategy ->
@@ -240,37 +368,17 @@ fun SyncScreen(
             }
             // Saving a strategy only records a direction; it must not require
             // the accounts to be configured yet.
-            OutlinedButton(onClick = { viewModel.saveCurrentAsStrategy() }) {
+            OutlinedButton(
+                onClick = { viewModel.saveCurrentAsStrategy() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("保存当前方向为策略")
             }
         }
 
-        // ---- actions -----------------------------------------------------
-        Button(
-            onClick = { startWithWarning { viewModel.startSync() } },
-            enabled = canSync,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 52.dp),
-        ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null)
-            Text("  一键同步全部", style = MaterialTheme.typography.titleMedium)
-        }
-
-        OutlinedButton(
-            // Always reachable: cached rows are viewable even before the
-            // accounts are configured, and the page explains what is missing.
-            onClick = { startWithWarning(onSelectActivities) },
-            enabled = !runState.running,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(Icons.Filled.Checklist, contentDescription = null)
-            Text("  选择活动同步")
-        }
-
-        // ---- live progress ------------------------------------------------
+        // ---- 同步中 ---------------------------------------------------------
         if (runState.running) {
-            SectionCard(title = "同步中") {
+            SectionCard(title = "同步中", icon = Icons.Filled.CloudSync) {
                 LinearProgressIndicator(
                     progress = { runState.progress },
                     modifier = Modifier.fillMaxWidth(),
@@ -286,20 +394,43 @@ fun SyncScreen(
             }
         }
 
-        // ---- result -------------------------------------------------------
         runState.error?.let { error ->
-            SectionCard(title = "同步未开始") {
+            SectionCard(title = "同步未开始", icon = Icons.Filled.ErrorOutline) {
                 Text(error, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = { viewModel.clearRunState() }) { Text("知道了") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = { viewModel.clearRunState() }) { Text("知道了") }
+                }
             }
         }
 
+        // ---- 本次结果 -------------------------------------------------------
         runState.summary?.let { result ->
             val isExport = result.direction.target == Platform.LOCAL_FILES
-            SectionCard(title = if (isExport) "导出结果" else "本次结果") {
-                InfoRow(if (isExport) "已导出文件" else "成功", "${result.succeeded}")
-                if (!isExport) InfoRow("重复", "${result.duplicated}")
-                InfoRow("失败", "${result.failed}")
+            SectionCard(
+                title = if (isExport) "导出结果" else "本次结果",
+                icon = Icons.Filled.TaskAlt,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatTile(
+                        label = "成功",
+                        value = "${result.succeeded}",
+                        modifier = Modifier.weight(1f),
+                        tone = if (result.succeeded > 0) StatusTone.OK else StatusTone.NEUTRAL,
+                    )
+                    StatTile("重复", "${result.duplicated}", Modifier.weight(1f))
+                    StatTile(
+                        label = "失败",
+                        value = "${result.failed}",
+                        modifier = Modifier.weight(1f),
+                        tone = if (result.failed > 0) StatusTone.ERROR else StatusTone.NEUTRAL,
+                    )
+                }
                 if (isExport) {
                     Text(
                         "文件保存在「下载 / SportFitSync」目录，可直接上传到任意平台。",
@@ -316,49 +447,58 @@ fun SyncScreen(
             }
         }
 
-        // ---- latest history ----------------------------------------------
+        // ---- 最近一次同步 ---------------------------------------------------
         jobs.firstOrNull()?.let { job ->
-            SectionCard(title = "最近一次同步") {
+            SectionCard(title = "最近一次同步", icon = Icons.Filled.History) {
                 InfoRow(
                     job.sourcePlatform.let { Platform.fromKey(it)?.displayName ?: it } +
                         " → " +
                         job.targetPlatform.let { Platform.fromKey(it)?.displayName ?: it },
                     Format.dateTime(job.startedAt),
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusBadge(
-                        text = when (job.status) {
-                            "SUCCESS" -> "成功"
-                            "PARTIAL" -> "部分成功"
-                            "RUNNING" -> "进行中"
-                            "CANCELLED" -> "已取消"
-                            else -> "失败"
-                        },
-                        tone = when (job.status) {
-                            "SUCCESS" -> StatusTone.OK
-                            "PARTIAL" -> StatusTone.WARN
-                            "RUNNING" -> StatusTone.NEUTRAL
-                            else -> StatusTone.ERROR
-                        },
+                        text = jobStatusLabel(job.status),
+                        tone = jobStatusTone(job.status),
                     )
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        job.message ?: "${job.okCount} 成功 / ${job.failCount} 失败",
+                        job.message ?: "成功 ${job.okCount} · 失败 ${job.failCount}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                TextButton(onClick = { onOpenJob(job.id) }) { Text("查看详情") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = { onOpenJob(job.id) }) { Text("查看详情") }
+                }
             }
         }
 
+        // Coros 是单设备登录：把这件事说清楚，比让同步莫名其妙中断强。
         if (direction.source == Platform.COROS || direction.target == Platform.COROS) {
-            Text(
-                "提示：Coros 为单设备登录，同步期间请不要打开 Coros App 或网页，否则会中断同步。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "Coros 为单设备登录，同步期间请不要打开 Coros App 或网页，否则会中断同步。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
         }
     }
 
@@ -386,4 +526,3 @@ fun SyncScreen(
         )
     }
 }
-

@@ -1,20 +1,37 @@
 package com.sportfit.sync.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,12 +44,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.sportfit.sync.cache.CacheCategory
 import com.sportfit.sync.cache.CacheManager
 import com.sportfit.sync.ui.AppViewModel
-import com.sportfit.sync.ui.components.InfoRow
+import com.sportfit.sync.ui.components.HairLine
+import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.SoftChip
+import com.sportfit.sync.ui.theme.NumericSmallTextStyle
+import com.sportfit.sync.ui.theme.NumericTextStyle
 
 /**
  * Local cache screen (the third explicit requirement).
@@ -51,17 +74,22 @@ fun CacheScreen(
     var pendingDangerous by remember { mutableStateOf<CacheCategory?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
-            Text(
-                "本地缓存",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 12.dp),
+            ScreenHeader(
+                title = "缓存与存储",
+                icon = Icons.Filled.CleaningServices,
+                modifier = Modifier.weight(1f),
             )
         }
-        HorizontalDivider()
+        HairLine()
 
         Column(
             modifier = Modifier
@@ -71,8 +99,42 @@ fun CacheScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionCard(title = "占用情况") {
-                InfoRow("可安全清理", CacheManager.formatBytes(snapshot.safeBytes))
-                InfoRow("全部占用", CacheManager.formatBytes(snapshot.totalBytes))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Column {
+                        Text(
+                            CacheManager.formatBytes(snapshot.totalBytes),
+                            style = NumericTextStyle,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            "全部占用",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            CacheManager.formatBytes(snapshot.safeBytes),
+                            style = NumericSmallTextStyle,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "可安全清理",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                snapshot.categories.forEach { category ->
+                    UsageBar(
+                        category = category,
+                        totalBytes = snapshot.totalBytes,
+                    )
+                }
                 Button(
                     onClick = { viewModel.clearAllSafeCache() },
                     modifier = Modifier.fillMaxWidth(),
@@ -90,18 +152,30 @@ fun CacheScreen(
             SectionCard(title = "分类清理") {
                 snapshot.safeCategories.forEach { category ->
                     CategoryRow(category = category, onClear = { viewModel.clearCache(category.key) })
-                    HorizontalDivider()
+                    if (category != snapshot.safeCategories.last()) {
+                        HairLine()
+                    }
                 }
             }
 
             SectionCard(title = "自动清理策略") {
-                InfoRow(
-                    "同步成功后删除中转文件",
-                    if (settings.cachePolicy.deleteTempAfterSuccess) "已开启" else "已关闭",
+                PolicyRow(
+                    label = "同步成功后删除中转文件",
+                    value = if (settings.cachePolicy.deleteTempAfterSuccess) "已开启" else "已关闭",
+                    enabled = settings.cachePolicy.deleteTempAfterSuccess,
                 )
-                InfoRow("已删除账号的活动列表保留", "${settings.cachePolicy.activityRetentionDays} 天")
-                InfoRow("同步日志保留", "${settings.cachePolicy.logRetentionDays} 天")
-                InfoRow("同步历史保留", "最近 ${settings.cachePolicy.jobHistoryLimit} 次")
+                PolicyRow(
+                    label = "已删除账号的活动列表保留",
+                    value = "${settings.cachePolicy.activityRetentionDays} 天",
+                )
+                PolicyRow(
+                    label = "同步日志保留",
+                    value = "${settings.cachePolicy.logRetentionDays} 天",
+                )
+                PolicyRow(
+                    label = "同步历史保留",
+                    value = "最近 ${settings.cachePolicy.jobHistoryLimit} 次",
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { viewModel.applyRetentionNow() }) {
                         Text("立即按策略清理")
@@ -109,7 +183,7 @@ fun CacheScreen(
                 }
             }
 
-            SectionCard(title = "危险操作") {
+            SectionCard(title = "危险操作", icon = Icons.Filled.WarningAmber) {
                 Text(
                     "以下内容不属于缓存，清理后需要重新配置或会触发重复同步。",
                     style = MaterialTheme.typography.bodySmall,
@@ -159,6 +233,67 @@ fun CacheScreen(
     }
 }
 
+/** 某个分类占用的条形图：名称 + 大小 + 进度条。 */
+@Composable
+private fun UsageBar(category: CacheCategory, totalBytes: Long) {
+    val ratio = if (totalBytes > 0L) {
+        (category.bytes.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(category.title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                CacheManager.formatBytes(category.bytes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { ratio },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp),
+            color = if (category.dangerous) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+    }
+}
+
+/** 策略项：左边说明，右边一个数值标签。 */
+@Composable
+private fun PolicyRow(label: String, value: String, enabled: Boolean = true) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SoftChip(
+            text = value,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.secondary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+    }
+}
+
+/** 分类行：图标 + 名称 + 条数/大小 + 清理按钮。 */
 @Composable
 private fun CategoryRow(
     category: CacheCategory,
@@ -166,10 +301,36 @@ private fun CategoryRow(
     danger: Boolean = false,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (danger) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                categoryIcon(category.key),
+                contentDescription = null,
+                tint = if (danger) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.size(20.dp),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(category.title, style = MaterialTheme.typography.bodyMedium)
             Text(
@@ -183,8 +344,26 @@ private fun CategoryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = onClear) {
-            Text("清理", color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        TextButton(
+            onClick = onClear,
+            colors = if (danger) {
+                ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            } else {
+                ButtonDefaults.textButtonColors()
+            },
+        ) {
+            Text("清理")
         }
     }
+}
+
+/** 分类图标：按缓存分类的 key 取一个语义相符的图标。 */
+private fun categoryIcon(key: String): ImageVector = when (key) {
+    CacheManager.KEY_TEMP_FILES -> Icons.Filled.FolderZip
+    CacheManager.KEY_ACTIVITIES -> Icons.Filled.FitnessCenter
+    CacheManager.KEY_LOGS -> Icons.Filled.Description
+    CacheManager.KEY_HISTORY -> Icons.Filled.History
+    CacheManager.KEY_EXCLUSIONS -> Icons.Filled.Block
+    CacheManager.KEY_SYNC_RECORDS -> Icons.AutoMirrored.Filled.FactCheck
+    else -> Icons.Filled.Folder
 }

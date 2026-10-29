@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 空状态插画：一枚秒表。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <!-- 表冠与按钮 -->
+    <path
+        android:pathData="M43,12 L53,12 L53,18 L43,18 Z"
+        android:fillColor="#FFB9C0D6" />
+    <path
+        android:pathData="M66,20 L74,28 L69,33 L61,25 Z"
+        android:fillColor="#FFB9C0D6" />
+
+    <!-- 表盘 -->
+    <path
+        android:pathData="M48,44 m-28,0 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0"
+        android:strokeColor="#FFB9C0D6"
+        android:strokeWidth="6" />
+
+    <!-- 指针 -->
+    <path
+        android:pathData="M48,44 L48,26"
+        android:strokeColor="#FF7A5AF8"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M48,44 L62,52"
+        android:strokeColor="#FF7A5AF8"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M48,44 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0"
+        android:fillColor="#FF7A5AF8" />
+</vector>

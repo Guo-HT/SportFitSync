@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 空状态插画：一个人形 + 一枚对勾徽章，表示「去配置账号」。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <!-- 头 -->
+    <path
+        android:pathData="M38,30 m-13,0 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0"
+        android:strokeColor="#FFB9C0D6"
+        android:strokeWidth="6" />
+
+    <!-- 肩 -->
+    <path
+        android:pathData="M14,76 A24,24 0 0 1 62,76"
+        android:strokeColor="#FFB9C0D6"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- 对勾徽章 -->
+    <path
+        android:pathData="M70,58 m-16,0 a16,16 0 1,0 32,0 a16,16 0 1,0 -32,0"
+        android:fillColor="#FF7A5AF8" />
+    <path
+        android:pathData="M61,58 L68,65 L80,51"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

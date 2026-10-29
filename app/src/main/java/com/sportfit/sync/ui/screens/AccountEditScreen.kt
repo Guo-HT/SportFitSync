@@ -3,16 +3,25 @@ package com.sportfit.sync.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,12 +33,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.ui.AppViewModel
-import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.BorderedSurface
+import com.sportfit.sync.ui.components.HairLine
+import com.sportfit.sync.ui.components.ScreenHeader
 import com.sportfit.sync.ui.components.SecretField
+import com.sportfit.sync.ui.components.SectionCard
+import com.sportfit.sync.ui.components.platformIcon
 
 /**
  * Add or edit one platform account.
@@ -63,17 +77,23 @@ fun AccountEditScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
-            Text(
-                "${if (isExisting) "修改" else "添加"} ${platform.displayName}",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 12.dp),
+            ScreenHeader(
+                title = "${if (isExisting) "修改" else "添加"} ${platform.displayName}",
+                icon = platformIcon(platform),
+                modifier = Modifier.weight(1f),
             )
         }
-        HorizontalDivider()
+
+        HairLine()
 
         Column(
             modifier = Modifier
@@ -82,7 +102,7 @@ fun AccountEditScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SectionCard(title = "凭据") {
+            SectionCard(title = "凭据", icon = Icons.Filled.Lock) {
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
@@ -105,7 +125,7 @@ fun AccountEditScreen(
             }
 
             regionOptions(platform)?.let { options ->
-                SectionCard(title = "区域") {
+                SectionCard(title = "区域", icon = Icons.Filled.Public) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         options.forEach { (value, label) ->
                             FilterChip(
@@ -124,7 +144,7 @@ fun AccountEditScreen(
             }
 
             if (platform == Platform.STRAVA) {
-                SectionCard(title = "Strava 授权") {
+                SectionCard(title = "Strava 授权", icon = Icons.Filled.Link) {
                     Text(
                         "Strava 需要在 strava.com/settings/api 自行创建 API 应用，并把 " +
                             "Authorization Callback Domain 设为 localhost，然后填入 Client ID / Secret。",
@@ -134,7 +154,7 @@ fun AccountEditScreen(
             }
 
             if (platform == Platform.COROS) {
-                SectionCard(title = "注意") {
+                SectionCard(title = "注意", icon = Icons.Filled.Warning) {
                     Text(
                         "Coros 只允许单设备登录：本机登录后，手机上的 Coros App 会被挤下线。",
                         style = MaterialTheme.typography.bodySmall,
@@ -142,30 +162,60 @@ fun AccountEditScreen(
                 }
             }
 
-            Text(
+            InfoNote(
                 "保存后会自动登录该账号，并把它的历史活动全量拉取到本地；" +
                     "之后的每次同步只做增量更新。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        Button(
-            onClick = {
-                viewModel.saveAccount(
-                    platform = platform,
-                    email = email.takeIf { it.isNotBlank() },
-                    password = password.takeIf { it.isNotBlank() },
-                    region = region,
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Button(
+                onClick = {
+                    viewModel.saveAccount(
+                        platform = platform,
+                        email = email.takeIf { it.isNotBlank() },
+                        password = password.takeIf { it.isNotBlank() },
+                        region = region,
+                    )
+                    onBack()
+                },
+                enabled = loaded && (isExisting || (email.isNotBlank() && password.isNotBlank())),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
                 )
-                onBack()
-            },
-            enabled = loaded && (isExisting || (email.isNotBlank() && password.isNotBlank())),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+                Spacer(Modifier.width(8.dp))
+                Text("保存")
+            }
+        }
+    }
+}
+
+/** 浅色信息条：带图标的一行说明。 */
+@Composable
+private fun InfoNote(text: String) {
+    BorderedSurface(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Text("保存")
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

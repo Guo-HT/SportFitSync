@@ -1053,3 +1053,65 @@ navController.navigate(tab.route) {
 | `app/src/androidTest/.../AppDatabaseMigrationTest.kt` | 迁移不丢账号与账本 |
 
 用例数：单元测试 **95** 条（指纹 16、规划器 25），设备端 **20** 条。
+
+---
+
+## 15. 视觉体系（2026-10-29 的整体改版）
+
+之前的功能都做对了，但界面是「默认 Material3 的灰白卡片堆叠」：没有主次、没有品牌感、
+空状态只有一行灰字。这次把视觉体系重新立了一遍，**功能一个字没改**。
+
+### 15.1 设计原则
+
+1. **一层底图铺全 app**：`AppBackground` 在 `AppRoot` 里画一次（顶部主色淡染 → 页面底色
+   的垂直渐变 + 右上角一圈同心圆环装饰），切页面时背景是连续的，页面本身只管内容；
+2. **卡片不用阴影，用「容器色 + 细边框」**：Material3 默认阴影在浅色底上发脏，
+   `surfaceContainerLow` + `outlineVariant` 描边更干净；
+3. **状态有颜色语义**：辅色(青绿)=已同步/成功，第三色(琥珀)=提醒/部分成功，
+   错误色(珊瑚红)=失败，其余走中性色 —— 这套语义在状态标签、统计数字、进度条里一致；
+4. **数字用等宽数字**：`NumericTextStyle` 带 `fontFeatureSettings = "tnum"`，
+   统计数字刷新时不会左右跳；
+5. **每个平台一个固定色**：`PlatformPalette` 给 Garmin/Coros/Strava/iGPSPORT/OneLap
+   各一个颜色，徽章、芯片、方向指示都用它，列表里一眼能认出是哪个平台。
+
+### 15.2 落地的东西
+
+| 位置 | 内容 |
+|---|---|
+| `ui/theme/Color.kt` | 品牌色板 + 插画专用色 + `PlatformPalette` 平台色 |
+| `ui/theme/Theme.kt` | 完整 M3 明暗配色（含 `surfaceContainer*` 层级）、圆角、`LocalHeroPalette` |
+| `ui/theme/Type.kt` | 完整字阶 + `NumericTextStyle` / `NumericSmallTextStyle` |
+| `ui/components/Design.kt` | `AppBackground` / `ScreenHeader` / `HeroCard` / `StatTile` / `StatRow` / `PlatformAvatar` / `EmptyState` / `SectionTitle` / `SoftChip` / `HairLine` / `BorderedSurface` |
+| `ui/components/Common.kt` | `SectionCard` 升级（图标 + 细边框）、`StatusBadge` 改成圆点胶囊、`PlatformChip` 用平台色 |
+| `res/drawable/ic_hero_sync.xml` | 首页头图：循环箭头 + 心电曲线 |
+| `res/drawable/ic_empty_activities.xml` | 空状态：运动路线 + 图钉 |
+| `res/drawable/ic_empty_history.xml` | 空状态：秒表 |
+| `res/drawable/ic_empty_accounts.xml` | 空状态：人形 + 对勾徽章 |
+| `res/drawable/ic_decor_rings.xml` | 背景装饰：同心圆环 |
+
+插画都是手写的 **VectorDrawable**（= Android 上的 SVG），不依赖任何图片资源，
+深浅色主题下都靠固定配色保证对比度。
+
+### 15.3 改版时的纪律
+
+- 只用 `MaterialTheme.colorScheme` 里的颜色，不写死 `Color(0xFF…)`；
+  平台色、插画色是唯二的两处例外，且都集中在 theme / components 两个文件里；
+- **不动行为**：ViewModel 调用、onClick 语义、按钮文案含义一律不变；
+- 改版和功能改动分开提交，评审时能一眼看出哪些是「样子」哪些是「功能」。
+
+### 15.4 改版后的自检（无视觉模型也能查）
+
+本机没有可用的视觉模型（`minimax-cn` 只有 MiniMax-M3，omlx 的是纯文本模型），
+所以改版的「好不好看」靠三道**程序化自检**兜底：
+
+1. **对比度审计**：对每张截图，用 `uiautomator dump` 拿文本节点坐标，
+   再在截图里取该区域的实际像素 → 文字色 vs 背景色算 WCAG 对比度。
+   浅色主题 6 个页面全部 ≥ 4.5；深色主题抽查 3 个页面同样全部 ≥ 4.5。
+   唯一低于阈值的是活动选择页底部两个**禁用**按钮（M3 默认禁用态约 2.2，
+   按规范禁用控件可豁免）。
+2. **重叠检测**：两两比对文本节点的外接矩形，6 个页面**无一重叠**。
+3. **文案完整性**：把改版前后每个页面的中文字符串抽出来做集合差，
+   逐条确认「消失的文案」是换了说法（拆成统计小卡）还是被搬到了公共函数
+   （`jobStatusLabel`/`jobStatusTone`）——功能没丢。
+
+复现命令见 `tools/audit.py`（逐屏 dump + 截图 + 比对）。

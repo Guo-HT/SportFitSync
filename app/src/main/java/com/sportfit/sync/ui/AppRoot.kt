@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.sportfit.sync.domain.Platform
+import com.sportfit.sync.ui.components.AppBackground
 import com.sportfit.sync.ui.components.MfaDialog
 import com.sportfit.sync.ui.screens.AccountEditScreen
 import com.sportfit.sync.ui.screens.AccountsScreen
@@ -110,11 +111,13 @@ fun AppRoot(viewModel: AppViewModel) {
             }
         },
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Tab.Sync.route,
-            modifier = Modifier.padding(innerPadding),
-        ) {
+        // 底图统一在这里铺：所有页面共享同一层渐变和右上角的装饰环，
+        // 切页面时背景是连续的，页面本身只管内容。
+        AppBackground(modifier = Modifier.padding(innerPadding)) {
+            NavHost(
+                navController = navController,
+                startDestination = Tab.Sync.route,
+            ) {
             composable(Tab.Sync.route) {
                 SyncScreen(
                     viewModel = viewModel,
@@ -181,6 +184,7 @@ fun AppRoot(viewModel: AppViewModel) {
                     jobId = entry.arguments?.getLong("jobId") ?: 0L,
                     onBack = { navController.popBackStack() },
                 )
+            }
             }
         }
     }

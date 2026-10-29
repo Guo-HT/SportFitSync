@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 空状态插画：一条运动路线（起点圆点 + 终点图钉）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <path
+        android:pathData="M22,74 C32,52 42,66 50,44 C58,24 66,40 74,28"
+        android:strokeColor="#FFB9C0D6"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 起点 -->
+    <path
+        android:pathData="M22,74 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0"
+        android:fillColor="#FF7A5AF8" />
+
+    <!-- 终点图钉 -->
+    <path
+        android:pathData="M74,28 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:strokeColor="#FF7A5AF8"
+        android:strokeWidth="5" />
+    <path
+        android:pathData="M70,36 L78,36 L74,48 Z"
+        android:fillColor="#FF7A5AF8" />
+</vector>
