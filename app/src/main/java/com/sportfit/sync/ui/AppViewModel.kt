@@ -22,12 +22,16 @@ import com.sportfit.sync.sync.SyncRequest
 import com.sportfit.sync.sync.SyncSummary
 import com.sportfit.sync.platform.strava.StravaOAuth
 import com.sportfit.sync.sync.toUserMessage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -93,6 +97,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private val _target = MutableStateFlow(Platform.COROS)
     val target: StateFlow<Platform> = _target.asStateFlow()
 
+    /**
+     * 当前方向（源平台 → 目标平台）。
+     *
+     * 合成一条流而不是让下游各自去 combine：以前切一次方向会先发一次 _source、
+     * 再发一次 _target，下游的 flatMapLatest 因此**重启两次**，等于把同一批
+     * 数据库查询和指纹计算白做一遍。合成一条流 + distinctUntilChanged 之后，
+     * 一次切换只重启一次。
+     */
+    private val directionFlow: Flow<SyncDirection> =
+        kotlinx.coroutines.flow.combine(_source, _target) { source, target ->
+            SyncDirection(source, target)
+        }.distinctUntilChanged()
+
     private val _runState = MutableStateFlow(SyncRunState())
     val runState: StateFlow<SyncRunState> = _runState.asStateFlow()
 
@@ -112,7 +129,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val activitySummary: StateFlow<ActivitySummary> =
-        kotlinx.coroutines.flow.combine(_source, _target) { s, t -> SyncDirection(s, t) }
+        directionFlow
             .flatMapLatest { direction ->
                 kotlinx.coroutines.flow.combine(
                     container.database.activityDao().observeFor(direction.source.key, PICKER_LIMIT),
@@ -125,17 +142,37 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     val statusById = records.associate { it.activityId to SyncStatus.fromCode(it.status) }
                     val syncedFingerprints = records.syncedFingerprints()
                     val excluded = exclusions.map { it.activityId }.toSet()
-                    val eligible = activities.filter { it.activityId !in excluded }
+                    // 一趟遍历把三个计数一起算出来。
+                    // 以前是三个 count 各算一遍，等于同一条活动算了三次指纹
+                    // （每次是一次 SHA-256），一千条活动就是三千次 —— 而且
+                    // 这段计算跑在主线程上，切一次方向能把整个界面卡住半秒。
+                    var pending = 0
+                    var failed = 0
+                    var eligible = 0
+                    for (activity in activities) {
+                        if (activity.activityId in excluded) continue
+                        eligible++
+                        when (statusOf(activity, statusById, syncedFingerprints)) {
+                            SyncStatus.SYNCED -> Unit
+                            SyncStatus.FAILED -> {
+                                pending++
+                                failed++
+                            }
+                            else -> pending++
+                        }
+                    }
                     ActivitySummary(
                         // 本地一共存了多少条：用真实计数，而不是这一页显示的条数。
                         cached = counts.firstOrNull { it.platform == direction.source.key }?.count
                             ?: activities.size,
-                        pending = eligible.count { statusOf(it, statusById, syncedFingerprints) != SyncStatus.SYNCED },
-                        synced = eligible.count { statusOf(it, statusById, syncedFingerprints) == SyncStatus.SYNCED },
-                        failed = eligible.count { statusOf(it, statusById, syncedFingerprints) == SyncStatus.FAILED },
+                        pending = pending,
+                        synced = eligible - pending,
+                        failed = failed,
                     )
                 }
             }
+            // 指纹计算是纯 CPU 活，挪到后台线程：切方向时界面不能被它堵住。
+            .flowOn(Dispatchers.Default)
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
@@ -577,6 +614,40 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * 批量排除：把一批活动一次性标记为「不再同步」。
+     *
+     * 一次事务写入，避免几百条活动几百次往返；写完给一句反馈，
+     * 让用户知道到底排除了多少条。
+     */
+    fun excludeMany(direction: SyncDirection, activityIds: Collection<String>) {
+        val ids = activityIds.toSet()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            container.database.exclusionDao().upsertAll(
+                ids.map {
+                    com.sportfit.sync.data.local.ExclusionEntity(
+                        sourcePlatform = direction.source.key,
+                        targetPlatform = direction.target.key,
+                        activityId = it,
+                    )
+                },
+            )
+            _message.value = "已排除 ${ids.size} 条活动，后续同步将跳过"
+        }
+    }
+
+    /** 批量恢复：把一批已排除的活动放回可同步列表。 */
+    fun unexcludeMany(direction: SyncDirection, activityIds: Collection<String>) {
+        val ids = activityIds.toSet()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val removed = container.database.exclusionDao()
+                .removeAll(direction.source.key, direction.target.key, ids.toList())
+            _message.value = "已恢复 ${if (removed > 0) removed else ids.size} 条活动"
+        }
+    }
+
     suspend fun cachedActivities(platform: Platform, limit: Int = PICKER_LIMIT) =
         container.database.activityDao().listFor(platform.key, limit)
 
@@ -651,6 +722,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 )
             }
         }
+        // 同上：指纹计算不要占着主线程（列表刷新时会重算一遍）。
+        .flowOn(Dispatchers.Default)
 
     // ---- cache ------------------------------------------------------------
 

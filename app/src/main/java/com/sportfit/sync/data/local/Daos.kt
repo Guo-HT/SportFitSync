@@ -341,6 +341,10 @@ interface ExclusionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(exclusion: ExclusionEntity)
 
+    /** 批量排除：一次事务写入，几十上百条也不要一条一条来。 */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(exclusions: List<ExclusionEntity>)
+
     @Query(
         """
         DELETE FROM exclusions
@@ -348,6 +352,16 @@ interface ExclusionDao {
         """,
     )
     suspend fun remove(source: String, target: String, activityId: String): Int
+
+    /** 批量恢复：一次事务删掉多条排除记录。 */
+    @Query(
+        """
+        DELETE FROM exclusions
+        WHERE sourcePlatform = :source AND targetPlatform = :target
+          AND activityId IN (:activityIds)
+        """,
+    )
+    suspend fun removeAll(source: String, target: String, activityIds: List<String>): Int
 
     @Query("SELECT COUNT(*) FROM exclusions")
     suspend fun count(): Int

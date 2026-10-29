@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -78,10 +79,20 @@ fun ActivityPickerScreen(
     val loading by viewModel.loadingActivities.collectAsState()
 
     var selected by remember(direction) { mutableStateOf(setOf<String>()) }
-    var showSynced by remember { mutableStateOf(false) }
+    // 三选一的筛选：默认只看待同步的，「全部」看全量，「已排除」用来批量恢复。
+    var filter by remember(direction) { mutableStateOf(PickerFilter.SYNCABLE) }
+    var pendingBatch by remember(direction) { mutableStateOf<BatchAction?>(null) }
 
-    val visible = items.filter { showSynced || it.status != SyncStatus.SYNCED }
+    val visible = when (filter) {
+        PickerFilter.SYNCABLE -> items.filter { it.status != SyncStatus.SYNCED && !it.excluded }
+        PickerFilter.ALL -> items
+        PickerFilter.EXCLUDED -> items.filter { it.excluded }
+    }
     val selectable = visible.filterNot { it.excluded }
+    // 批量操作的对象始终是「当前筛选结果」：
+    // 排除 = 可见且还没被排除的，恢复 = 可见且已被排除的。
+    val excludableIds = selectable.map { it.activityId }
+    val restorableIds = visible.filter { it.excluded }.map { it.activityId }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -124,8 +135,10 @@ fun ActivityPickerScreen(
                 )
             }
 
-            // ---- 拉取 + 过滤 -----------------------------------------------
+            // ---- 拉取 ------------------------------------------------------
             Row(
+                // 横向留白 16dp：和统计卡、活动卡片、筛选 chips 对齐。
+                modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -150,15 +163,29 @@ fun ActivityPickerScreen(
                     // 手写空格会把可见文字整体顶偏（实测右偏 15~16dp）。
                     Text("拉取最新列表")
                 }
-                FilterChip(
-                    selected = showSynced,
-                    onClick = { showSynced = !showSynced },
-                    label = { Text("显示已同步") },
-                )
+            }
+
+            // ---- 筛选 ------------------------------------------------------
+            // 三选一：默认「待同步」，另外两个用来查全量 / 查已排除。
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PickerFilter.entries.forEach { option ->
+                    FilterChip(
+                        selected = filter == option,
+                        onClick = { filter = option },
+                        label = { Text(option.label) },
+                    )
+                }
             }
 
             // ---- 批量选择 --------------------------------------------------
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                // 横向留白 16dp：和上面的拉取按钮、筛选 chips 对齐。
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 TextButton(onClick = { selected = selectable.map { it.activityId }.toSet() }) {
                     Text("全选")
                 }
@@ -166,6 +193,42 @@ fun ActivityPickerScreen(
                     selected = selectable.map { it.activityId }.toSet() - selected
                 }) { Text("反选") }
                 TextButton(onClick = { selected = emptySet() }) { Text("清空") }
+            }
+
+            // ---- 批量排除 / 批量恢复 -----------------------------------------
+            // 两个按钮互斥：在「已排除」筛选下只可能恢复，其它筛选下只可能排除，
+            // 不会出现两个含义打架的按钮同时挂在页面上。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                if (filter == PickerFilter.EXCLUDED) {
+                    OutlinedButton(
+                        onClick = { pendingBatch = BatchAction.Restore(restorableIds) },
+                        enabled = restorableIds.isNotEmpty(),
+                    ) { Text("批量恢复") }
+                } else {
+                    OutlinedButton(
+                        onClick = { pendingBatch = BatchAction.Exclude(excludableIds) },
+                        enabled = excludableIds.isNotEmpty(),
+                        // 危险操作用错误色描边：和卡片里那条错误色的「删除」同一套语言。
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        // 禁用时描边退回中性色，红框 + 灰字看起来像「出错了」。
+                        border = BorderStroke(
+                            1.dp,
+                            if (excludableIds.isEmpty()) {
+                                MaterialTheme.colorScheme.outline
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        ),
+                    ) { Text("批量排除") }
+                }
             }
         }
 
@@ -180,10 +243,31 @@ fun ActivityPickerScreen(
         ) {
             if (visible.isEmpty()) {
                 item {
+                    // 文案要区分「整个列表是空的」和「当前筛选没有匹配项」：
+                    // 否则在「待同步」「已排除」筛选下会误报「还没有活动列表」，
+                    // 让用户以为拉取失败了。
+                    val emptyTitle: String
+                    val emptyMessage: String
+                    when {
+                        items.isEmpty() -> {
+                            emptyTitle = "还没有活动列表"
+                            emptyMessage =
+                                "先点「拉取最新列表」，把 ${direction.source.displayName} 的活动拉回来。"
+                        }
+                        filter == PickerFilter.EXCLUDED -> {
+                            emptyTitle = "没有被排除的活动"
+                            emptyMessage =
+                                "在「待同步」或「全部」里选中活动后点「批量排除」，它们会出现在这里"
+                        }
+                        else -> {
+                            emptyTitle = "当前没有待同步的活动"
+                            emptyMessage = "切到「全部」可以查看已同步和已排除的活动"
+                        }
+                    }
                     EmptyState(
                         illustration = R.drawable.ic_empty_activities,
-                        title = "还没有活动列表",
-                        message = "先点「拉取最新列表」，把 ${direction.source.displayName} 的活动拉回来。",
+                        title = emptyTitle,
+                        message = emptyMessage,
                     )
                 }
             }
@@ -253,6 +337,72 @@ fun ActivityPickerScreen(
             }
         }
     }
+
+    // ---- 批量操作确认 ------------------------------------------------------
+    // 提示语由 ViewModel 自己发（_message → Snackbar），这里不再重复弹一次。
+    pendingBatch?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingBatch = null },
+            title = {
+                Text(
+                    when (action) {
+                        is BatchAction.Exclude -> "批量排除 ${action.ids.size} 条活动？"
+                        is BatchAction.Restore -> "恢复 ${action.ids.size} 条活动？"
+                    },
+                )
+            },
+            text = {
+                Text(
+                    when (action) {
+                        is BatchAction.Exclude -> "这些活动之后不会被同步，可以在「已排除」里随时恢复。"
+                        is BatchAction.Restore -> "这些活动会重新出现在待同步列表里。"
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        when (action) {
+                            is BatchAction.Exclude -> viewModel.excludeMany(direction, action.ids)
+                            is BatchAction.Restore -> viewModel.unexcludeMany(direction, action.ids)
+                        }
+                        pendingBatch = null
+                    },
+                    colors = if (action is BatchAction.Exclude) {
+                        ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                ) {
+                    Text(if (action is BatchAction.Exclude) "排除" else "恢复")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingBatch = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+/** 列表的筛选口径。 */
+private enum class PickerFilter(val label: String) {
+    /** 未同步、且没有被排除的。 */
+    SYNCABLE("待同步"),
+
+    /** 所有活动（含已同步、已排除）。 */
+    ALL("全部"),
+
+    /** 只看被排除的，用来批量恢复。 */
+    EXCLUDED("已排除"),
+}
+
+/** 待确认的批量操作。 */
+private sealed interface BatchAction {
+    val ids: List<String>
+
+    data class Exclude(override val ids: List<String>) : BatchAction
+
+    data class Restore(override val ids: List<String>) : BatchAction
 }
 
 /**
