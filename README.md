@@ -40,10 +40,11 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 | | |
 |---|---|
-| **12 条同步方向** | 5 个源平台 × 3 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
+| **16 条同步方向** | 5 个源平台 × 4 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
 | **跨账号去重** | 内容指纹识别「同一份数据换了新 activityId」，避免在目标端制造副本 |
 | **失败可重试** | 单条失败不影响整批；失败项自动重试，也能一键重跑失败集 |
 | **可取消 · 可观察** | 实时进度、逐条日志、前台服务保活，切到后台也不中断 |
+| **同步时不熄屏** | 同步一开，屏幕保持常亮；结束即恢复，免得进度还没看清屏幕就暗了 |
 | **本地历史库** | 绑定账号时全量拉取（上限 5000 条），之后只做增量；老活动也能排上队 |
 | **离线导出** | 一键把活动写成 `.fit` 存进 `下载/SportFitSync`，不依赖任何平台在线 |
 | **缓存可视可控** | 6 类缓存分别统计体积；安全项一键清理，危险项二次确认 |
@@ -71,20 +72,26 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 方向由「源 × 目标」组合产生，**不需要为每个方向单独写脚本**。
 
-| 源 ↓ / 目标 → | Garmin | Coros | Strava |
-|:---|:---:|:---:|:---:|
-| **Garmin** | — | ✅ | ✅ |
-| **Coros** | ✅ | — | ✅ |
-| **Strava** | ✅ | ✅ | — |
-| **iGPSPORT** | ✅ | ✅ | ✅ |
-| **OneLap** | ✅ | ✅ | ✅ |
+| 源 ↓ / 目标 → | Garmin | Coros | Strava | iGPSPORT |
+|:---|:---:|:---:|:---:|:---:|
+| **Garmin** | — | ✅ | ✅ | ✅ |
+| **Coros** | ✅ | — | ✅ | ✅ |
+| **Strava** | ✅ | ✅ | — | ✅ |
+| **iGPSPORT** | ✅ | ✅ | ✅ | — |
+| **OneLap** | ✅ | ✅ | ✅ | ✅ |
 
-**5 个源 × 3 个目标 − 3 个自环 = 12 条方向。** 这条矩阵由
+**5 个源 × 4 个目标 − 4 个自环 = 16 条方向。** 这条矩阵由
 [`SyncDirectionMatrixTest`](app/src/test/java/com/sportfit/sync/domain/SyncDirectionMatrixTest.kt)
-钉死：它把每一条方向逐一对应到上游 Python 项目的 `<src>_sync_<dst>.py` 脚本，
+钉死：其中 12 条逐一对应上游 Python 项目的 `<src>_sync_<dst>.py` 脚本，
+另外 4 条是本项目自己接的 iGPSPORT 目标方向——
 少一条就编译失败——**方向数变了，你会立刻知道**。
 
-`iGPSPORT` 与 `OneLap` 只能作源，与上游项目保持一致（这两个平台不提供导入接口）。
+`iGPSPORT` 现在**既作源也作目标**：它的网页端本来就有导入通道，只是上游项目从没接，
+本项目 2026-10-31 补上了（见[平台协议 § 五](docs/platform-protocols.md)）。
+`OneLap` 仍然只能作源——它确实没有导入接口。
+
+> ⚠️ iGPSPORT 这条上传通道是**移植**自另一个 Python 项目的，
+> **本项目尚未用真实账号端到端跑通**，实测状态与 Garmin / Coros / Strava 不同。
 
 ---
 
@@ -98,13 +105,13 @@ app/src/main/java/com/sportfit/sync/
 │   ├── net/         OkHttp 双档客户端 · CookieJar · RFC3986 编码 · MD5/SHA-256/HMAC
 │   ├── crypto/      CryptoBox（Android Keystore + AES-256-GCM）
 │   ├── format/      FitPackaging（ZIP ↔ FIT 归一化）
-│   ├── oss/         Coros STS 凭证 · 阿里云 V1 签名 · AWS SigV4 签名
+│   ├── oss/         STS 凭证（Coros / iGPSPORT）· 阿里云 V1 签名 · AWS SigV4 签名
 │   └── util/        TimeParsing
 ├── platform/        PlatformGateway 抽象 + 各平台客户端
 │   ├── garmin/      SSO → OAuth1 → OAuth2 → MFA
 │   ├── coros/       MD5 密码 → regionId → OSS 中转上传
 │   ├── strava/      OAuth2（内嵌 WebView 回调）
-│   ├── igpsport/    Bearer token，cn/global 双站点
+│   ├── igpsport/    Bearer token，cn/global 双站点，OSS 暂存 + uploadByOss 导入
 │   ├── onelap/      明文 HTTP + MD5（域名白名单）
 │   └── demo/        演练平台（仅 Debug）
 ├── data/
@@ -209,7 +216,7 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
 
 1. **归一化容器**（[`FitPackaging`](app/src/main/java/com/sportfit/sync/core/format/FitPackaging.kt)）：
    按魔数 `PK\x03\x04` 判断 ZIP 与否（不依赖 `Content-Type`），
-   `ensureRawFit()` 解包出裸 FIT（Garmin / Strava 拒绝 ZIP），
+   `ensureRawFit()` 解包出裸 FIT（Garmin / Strava / iGPSPORT 收的是裸 FIT），
    `ensureZip()` 打成 ZIP（Coros 导入只接受 ZIP 对象）。
 2. **命名导出文件**：清洗非法字符、折叠空白、截断到 40 字符。
 
@@ -230,7 +237,7 @@ SyncPlanner.applyLimit()         ← 显式勾选不受上限限制
 逐条处理（每条独立 try/catch）：
    source.download(activity)
      → 落盘到 cache/fit-cache/job-{id}/
-     → FitPackaging 归一化（Coros 要 ZIP，Garmin/Strava 要裸 FIT）
+     → FitPackaging 归一化（Coros 要 ZIP，Garmin/Strava/iGPSPORT 要裸 FIT）
      → target.upload(payload)
      → Success / Duplicate ⇒ 账本置 SYNCED
        Failed / 异常        ⇒ 账本置 FAILED（错误截断 500 字符）
@@ -271,7 +278,7 @@ SyncPlanner.applyLimit()         ← 显式勾选不受上限限制
 | **Garmin** | SSO → ticket → OAuth1 (HMAC-SHA1) → OAuth2；支持 MFA 弹窗 | `download-service/files/activity/{id}` → **ZIP** | `upload-service/upload` multipart；`202`+`uploadId` → 成功，`409`+`Duplicate Activity` → 重复 | `.com` / `.cn` |
 | **Coros** | `account/login`，`pwd = MD5(明文)` → `accessToken` + `regionId` | `activity/detail/download` → `fileUrl` | **不能直传**：STS 取凭证 → OSS PUT → `activity/fit/import` 三步中转 | region 1/2/3 |
 | **Strava** | OAuth2（自建应用），内嵌 WebView 拦截 `localhost/exchange_token` | `activities/{id}/export_original` | `POST /uploads` + 轮询处理完成 | 全球 |
-| **iGPSPORT** | `account/login` → Bearer token | 活动详情 → `fitUrl` | —（仅作源） | `cn` / `global` |
+| **iGPSPORT** | `account/login` → Bearer token | 活动详情 → `fitUrl` | **不能直传**：OSS 临时凭证 → OSS PUT（裸 FIT）→ `uploadByOss` 通知三步中转 | `cn` / `global` |
 | **OneLap** | 明文 HTTP + MD5 密码 | `analysis/list` → `durl` | —（仅作源） | 国内 |
 
 ### Coros 上传通道：一条会变的链路
@@ -303,6 +310,38 @@ export COROS_EMAIL='you@example.com' COROS_PASSWORD='…'
 ./build.sh :app:testDebugUnitTest --tests "*CorosLiveCheck" --rerun --console=plain -i
 # COROS_LIVE_STAGES=a,b,c,d,e 可选阶段；d 会在账号里新建活动，常规体检不要带
 ```
+
+### iGPSPORT 上传通道：移植来的两段式导入
+
+iGPSPORT 的网页端用「先暂存、再通知」的方式导入活动，上传同样要走
+**OSS 临时凭证 → OSS 上传 → 通知导入** 三步：
+
+```
+① GET {baseUrl}/mobile/api/AliyunService/GetOssTokenForApp
+   Authorization: Bearer <token>
+   → {"code":0,"data":{"accessKeyId":"…","accessKeySecret":"…","securityToken":"…",
+                       "endpoint":"…","bucketName":"…"}}
+   → endpoint / bucket 由平台下发，客户端只做归一化（去 scheme / 尾部斜杠 / 路径）
+
+② PUT https://{bucket}.{host}/{object-key}     ← 先试虚拟托管，失败回退一次路径风格
+   Authorization: OSS {accessKeyId}:{V1 HMAC-SHA1 签名}
+   对象键：1456042-{uuid4}
+   载荷：裸 FIT（不是 ZIP）
+
+③ POST {baseUrl}/web-gateway/web-analyze/activity/uploadByOss
+   Authorization: Bearer <token>
+   → {"fileName":"<活动标题>.fit","ossName":"1456042-<uuid4>"}
+   成功判定：HTTP 200 且 code == 0
+```
+
+活动标题取**源活动的名字**（非法字符 `[<>:"/\|?*]` → `_`，扩展名固定 `.fit`，
+标题为空时退回载荷的文件名）—— iGPSPORT 里显示的标题就是它。
+
+> ⚠️ 这条通道**移植**自另一个 Python 项目
+> （[Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync)），
+> **本项目尚未用真实账号端到端跑通**：已实测的只是两个接口的路由探活
+> （未带有效 token，分别返回 401 / 403）。完整报文见
+> [`docs/platform-protocols.md` § 五](docs/platform-protocols.md)。
 
 ---
 
@@ -373,8 +412,8 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ```bash
 ./build.sh :app:assembleDebug            # 构建 debug APK
-./build.sh :app:testDebugUnitTest        # JVM 单元测试（78 项，秒级）
-./build.sh :app:connectedDebugAndroidTest # 仪器测试（18 项，需模拟器在线）
+./build.sh :app:testDebugUnitTest        # JVM 单元测试（116 项，秒级）
+./build.sh :app:connectedDebugAndroidTest # 仪器测试（22 项，需模拟器在线）
 ./build.sh clean                         # 清理构建产物
 ```
 
@@ -424,22 +463,26 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 
 | 类型 | 数量 | 运行方式 |
 |---|---|---|
-| JVM 单元测试 | **78** 项 / 11 个测试类 | `./build.sh :app:testDebugUnitTest` |
-| 仪器测试 | **18** 项 / 4 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
+| JVM 单元测试 | **116** 项 / 14 个测试类 | `./build.sh :app:testDebugUnitTest` |
+| 仪器测试 | **22** 项 / 5 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
 
 覆盖的关键行为：
 
 - **FIT 归一化**（8 项）：ZIP ↔ FIT 双向、魔数判别、条目提取
 - **Coros STS 通道**（12 项）：区域→主机映射、凭证解码（阿里云/AWS 两种字段名）、
   `no_token` 与 `token_invalid` 区分、旧接口永远兜底
-- **同步候选选择**（15 项）：失败可重试、排除优先、指纹去重、处理量上限
-- **内容指纹**（9 项）：归一化、无时间回落 `NONE`、大小写与空白差异
-- **方向矩阵**（8 项）：12 条方向逐一对应上游脚本
+- **OSS endpoint 归一化**（10 项）：scheme / 尾部斜杠 / 路径剥离、端口保留、空值拒绝
+- **iGPSPORT OSS 凭证**（8 项）：响应解析、业务错误、字段缺失、畸形 JSON
+- **同步候选选择**（25 项）：失败可重试、排除优先、指纹去重、处理量上限
+- **内容指纹**（16 项）：归一化、无时间回落 `NONE`、大小写与空白差异
+- **方向矩阵**（8 项）：16 条方向逐一钉死（上游 12 条脚本 + 4 条 iGPSPORT 目标方向）
 - **Garmin OAuth1**（5 项）：签名基串、`login-url` 双编码回归、`mfa_token` 参与签名
 - **缓存保留策略**（仪器 10 项）：安全项清理不动账本、危险项需 `force`、日志 30 天 / 历史 100 条
 - **同步引擎**（仪器 5 项）：逐条失败隔离、重试计数、取消
 - **迁移不丢数据**（仪器 1 项）：v2 → v3 后账号与账本都还在
 - **导出**（仪器 2 项 + 5 项命名测试）：MediaStore 写入并读回比对、文件名清洗
+- **同步期间不熄屏**（仪器 2 项）：窗口 `FLAG_KEEP_SCREEN_ON` 跟随同步状态——
+  跑起来时点亮、结束后恢复（用演练平台跑真实一轮同步来验证）
 
 > 单元测试中有一项曾抓出真实缺陷：`oauth_signature` 没有写进 `Authorization` 头——
 > 这会让 Garmin 恒定返回 401。
@@ -454,13 +497,14 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 2. 在 `platform/<name>/` 实现 `PlatformGateway`，内部提供 `PlatformSource` / `PlatformTarget`。
 3. 注册到 `PlatformRegistry.gateway()`。
 4. 若需要额外字段（区域、client id），在 `AccountEditScreen.regionOptions()` 里补选项。
-5. **更新 `SyncDirectionMatrixTest` 的 `upstreamDirections`**——这个测试会强制你面对
-   「方向数变了」这件事。
+5. **更新 `SyncDirectionMatrixTest` 的 `upstreamDirections`**（或
+   `igpsportTargetDirections`）——这个测试会强制你面对「方向数变了」这件事。
 
 ### 新增一条同步方向
 
-通常**不需要写代码**：方向由「源 × 目标」组合产生。只有当上游确实新增了一类目标平台时，
-才需要动枚举与 Registry。
+通常**不需要写代码**：方向由「源 × 目标」组合产生。只有当**目标平台集合**变化时，
+才需要动枚举与 Registry —— 本项目 2026-10-31 把 iGPSPORT 加进目标集合就属于这种例外
+（上游并没有这条方向，是本项目自己接的）。
 
 ---
 
@@ -473,7 +517,9 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 | Coros 国际 / 欧洲区（regionId 1/3，AWS bucket） | ⚠️ **未实测**。签发凭证与 AWS SigV4 上传路径仅有兼容代码。中国区（regionId=2）已端到端验证通过 |
 | Strava 全链路 | 仅协议级实现 + 静态验证。授权需用户自建 Strava 应用 |
 | Garmin SSO / OAuth1 / MFA | 仅协议级实现 + 静态验证；登录态复用与活动列表曾用真实账号拉通 **200 条真实活动** |
-| iGPSPORT / OneLap 真实拉取 | 未实测 |
+| iGPSPORT 真实拉取 | 未实测 |
+| **iGPSPORT 上传通道**（OSS 暂存 + `uploadByOss`） | ⚠️ **未端到端实测**。方案移植自另一个 Python 项目，本项目未用真实账号跑通；已实测的只是两个接口的**路由探活**（未带有效 token，分别返回 401 / 403） |
+| OneLap 真实拉取 | 未实测 |
 | release 构建与签名 | **未验证**（只构建过 debug） |
 | 通知栏「取消」按钮 | 未做（通知目前只展示进度） |
 | 导出附 CSV 清单 | 未做 |
@@ -487,6 +533,10 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
   本项目持久化 OAuth 令牌，正常使用不会重复登录——调试时不要在循环里反复登录。
 - **Coros 的业务错误用 HTTP 200 返回**（如 `result: "1019"` 表示 token 失效），
   只判断 HTTP 状态码会漏掉鉴权失效。
+- **iGPSPORT 的 token 与站点绑定**：中国站签发的 token 在国际站用会 401，
+  所以「中国站 / 国际站」是**账号属性**，不是一个可以随时切换的选项。
+- **iGPSPORT 的导入判定是「HTTP 200 且 `code == 0`」**：只判 HTTP 状态码不够
+  （鉴权失败会返回 403 + `code == 0` 的畸形响应体）。
 
 ---
 
@@ -509,6 +559,9 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
   [issue #41](https://github.com/XiaoSiHwang/garmin-sync-coros/issues/41) 与
   [PR #42](https://github.com/XiaoSiHwang/garmin-sync-coros/pull/42)。
 - **[garth](https://github.com/matin/garth)** — Garmin 认证流程的参考实现。
+- Python 项目 **[Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync)** ——
+  iGPSPORT 上传通道（OSS 暂存 + `uploadByOss` 通知）的方案来源，
+  本项目于 2026-10-31 从其 `src/igpsport_client.py` 移植而来。
 
 ---
 

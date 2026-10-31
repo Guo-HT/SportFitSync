@@ -28,5 +28,19 @@ through the following upstream reports:
     https://github.com/XiaoSiHwang/garmin-sync-coros/issues/41
     https://github.com/XiaoSiHwang/garmin-sync-coros/pull/42
 
+The iGPSPORT upload channel implemented under
+app/src/main/java/com/sportfit/sync/platform/igpsport/ — the Aliyun OSS
+staging bucket plus the `activity/uploadByOss` notification — was
+reimplemented in Kotlin from the protocol behaviour published in:
+
+    FitSync
+    https://github.com/Dunky-Z/FitSync
+    Copyright (c) the FitSync contributors
+
+As with the projects above, no source code from that project is reused
+here; the attribution is given because its `src/igpsport_client.py` is the
+reference from which the channel's request sequence and payloads were
+derived.
+
 Third-party dependencies are distributed under their own licenses; see
 app/build.gradle.kts for the dependency list.

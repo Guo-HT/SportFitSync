@@ -276,7 +276,7 @@ class SyncEngine(
                         "[${index + 1}/$total] 已暂存 ${staged.name}（${payload.sizeBytes} 字节），" +
                             "上传到 ${request.target.displayName}…",
                     )
-                    val outcome = target.upload(payload)
+                    val outcome = target.upload(payload, activity.name)
                     if (outcome.isSuccess && cache.deleteTempAfterSuccess()) staged.delete()
 
                     when (outcome) {

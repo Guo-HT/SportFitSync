@@ -1,9 +1,16 @@
 package com.sportfit.sync.domain
 
 /**
- * A fitness platform. `canBeTarget` mirrors the upstream Python project:
- * only Garmin, Coros and Strava accept uploads — iGPSPORT and OneLap are
- * export-only sources.
+ * A fitness platform.
+ *
+ * `canBeTarget` started out as a mirror of the upstream Python project
+ * (`garmin-sync-coros`), where only Garmin, Coros and Strava accept uploads
+ * and iGPSPORT / OneLap are export-only sources.
+ *
+ * iGPSPORT became an exception on 2026-10-31: its web API does have an import
+ * channel (`activity/uploadByOss`), it was simply never wired up upstream. The
+ * channel was ported from [Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync).
+ * OneLap still has no import interface and stays source-only.
  */
 enum class Platform(
     val key: String,
@@ -14,7 +21,7 @@ enum class Platform(
     GARMIN("garmin", "Garmin", canBeSource = true, canBeTarget = true),
     COROS("coros", "Coros", canBeSource = true, canBeTarget = true),
     STRAVA("strava", "Strava", canBeSource = true, canBeTarget = true),
-    IGPSPORT("igpsport", "iGPSPORT", canBeSource = true, canBeTarget = false),
+    IGPSPORT("igpsport", "iGPSPORT", canBeSource = true, canBeTarget = true),
     ONELAP("onelap", "OneLap", canBeSource = true, canBeTarget = false),
 
     /**

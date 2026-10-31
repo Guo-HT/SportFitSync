@@ -73,8 +73,16 @@ interface PlatformSource {
 interface PlatformTarget {
     val platform: Platform
 
-    /** [payload] is always a raw `.fit`; targets wrap it if they need a ZIP. */
-    suspend fun upload(payload: FitPayload): UploadOutcome
+    /**
+     * Uploads one activity.
+     *
+     * @param payload the activity file; targets wrap it if they need a ZIP.
+     * @param activityName the source activity's human-readable title, when the
+     *   source platform provided one. Targets that can show a title (iGPSPORT
+     *   names the activity after the uploaded file) use it; the ones that read
+     *   the title out of the FIT itself ignore it.
+     */
+    suspend fun upload(payload: FitPayload, activityName: String? = null): UploadOutcome
 
     /**
      * 目标端已有的活动列表，用于同步前比对去重。

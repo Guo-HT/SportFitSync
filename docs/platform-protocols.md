@@ -451,3 +451,250 @@ requests.exceptions.HTTPError: 429 Client Error: Too Many Requests
 Python 项目没有使用，所以**每次运行脚本都是一次全新 SSO 登录**。
 Android 端把令牌持久化在 `accounts.tokenCipher`（Keystore 加密），正常运行**不会**重复登录 ——
 这是移动端相对脚本的一个实际优势。调 Garmin 相关代码时注意这一点：不要在循环里反复登录。
+
+---
+
+## 五、iGPSPORT（新增上传通道：OSS 暂存 + uploadByOss 通知，2026-10-31 接入）
+
+### 5.1 概述：以前为什么只把 iGPSPORT 当源
+
+iGPSPORT 一直只被当作**源平台**：上游 Python 项目 `garmin-sync-coros` 的 12 个同步脚本里，
+只有 `igpsport_sync_{garmin,coros,strava}.py` 三个方向 —— **上游从来没把 iGPSPORT 当过目标**，
+本项目早期照抄了这个结论（`Platform.IGPSPORT` 的 `canBeTarget = false`）。
+
+但「上游没接」≠「iGPSPORT 没有导入接口」。iGPSPORT 的**网页端确实有**一条导入通道，
+只是它是「先暂存、再通知」的两段式结构：
+
+```
+登录换 token → 用 token 换阿里云 OSS 临时凭证 → 把 FIT 传到 OSS → 通知服务端导入
+```
+
+本项目 2026-10-31 把这条通道接上了（方案移植自另一个 Python 项目
+[Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync) 的 `src/igpsport_client.py`），
+iGPSPORT 从此**既作源也作目标**。
+
+> ⚠️ **端到端未用真实账号实测**：本节描述的链路**没有用真实 iGPSPORT 账号跑通过一次完整上传**。
+> 详见 5.10。
+
+### 5.2 区域差异：token 与站点绑定
+
+iGPSPORT 有**中国站**与**国际站**两套彼此独立的站点：
+
+| 区域（账号的 `region` 字段） | `baseUrl` | Origin / Referer |
+|---|---|---|
+| `cn`（中国站） | `https://prod.zh.igpsport.com/service` | `https://login.passport.igpsport.cn` |
+| `global`（国际站） | `https://prod.en.igpsport.com/service` | `https://login.passport.igpsport.com` |
+
+**关键：token 只在签发它的那个站点上有效** —— 中国站签发的 token 拿到国际站用会 401。
+所以「用哪个站点」是**账号属性**，不是每次请求的可选项：账号表里的 `region` 决定 `baseUrl`，
+换站点等于换账号（这也是 UI 上两个站点分成两条账号记录的原因）。
+
+### 5.3 完整链路（4 步）
+
+#### 步骤 1：登录换 Bearer token
+
+```
+POST {baseUrl}/auth/account/login
+Content-Type: application/json
+Origin: https://login.passport.igpsport.cn          ← 按站点切换
+Referer: https://login.passport.igpsport.cn/
+
+{"username":"<账号>","password":"<密码>","appId":"igpsport-web"}
+```
+
+成功响应（HTTP 200）：
+
+```json
+{"code":0,"message":"success","data":{"access_token":"<bearer>"}}
+```
+
+- 取 `data.access_token`，后续每个请求都带 `Authorization: Bearer <token>`。
+- `appId` 固定为 `igpsport-web`（网页端的应用标识）。
+- `code != 0` 就是业务失败 —— **不能只看 HTTP 状态码**（与 Coros 同类问题，见第三节）。
+
+#### 步骤 2：取 OSS 临时凭证
+
+```
+GET {baseUrl}/mobile/api/AliyunService/GetOssTokenForApp
+Authorization: Bearer <token>
+```
+
+成功响应（HTTP 200）：
+
+```json
+{"code":0,"message":"success","data":{
+  "accessKeyId":"...",
+  "accessKeySecret":"...",
+  "securityToken":"...",
+  "endpoint":"oss-cn-xxx.aliyuncs.com",
+  "bucketName":"..."
+}}
+```
+
+- 这是**阿里云 STS 临时三元组 + OSS 落点**。`endpoint` 与 `bucketName` **由平台下发**，
+  客户端既不猜也不硬编码。
+- 2026-10-31 实测：不带 `Authorization` 请求这个路由 → **HTTP 401**（路由存在，需要鉴权）。
+
+#### 步骤 3：把 FIT 传到阿里云 OSS
+
+```
+PUT https://{bucket}.{endpoint-host}/{object-key}
+Authorization: OSS {accessKeyId}:{signature}
+Date: <RFC1123 GMT>
+Content-MD5: <base64(md5(payload))>
+Content-Type: application/octet-stream
+x-oss-security-token: {securityToken}
+
+<裸 FIT 字节流>
+```
+
+- **载荷必须是裸 FIT，不能是 ZIP**（与 Garmin / Strava 同一条规则，见 5.9 第 2 条）。
+- 签名用**阿里云 OSS V1（HMAC-SHA1）**，canonical resource 是 `/{bucket}/{object-key}`。
+- 对象键规则：`1456042-{uuid4}`（`1456042` 是参考项目沿用的固定应用标识）。
+
+#### 步骤 4：通知 iGPSPORT 导入
+
+```
+POST {baseUrl}/web-gateway/web-analyze/activity/uploadByOss
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"fileName":"<活动标题>.fit","ossName":"1456042-<uuid4>"}
+```
+
+成功判定：**HTTP 200 且响应体 `code == 0`**。
+
+2026-10-31 实测（不带 `Authorization`）：**HTTP 403**，响应体是
+
+```json
+{"code":0,"message":"success","data":"The token was expected to have 3 parts, but got 0."}
+```
+
+—— 路由存在，服务端把 bearer token 当 JWT 解析。
+
+> ⚠️ 注意这个 403 响应体的 `code` **也是 0**。只判 `code == 0` 会把鉴权失败当成成功，
+> 所以顺序必须是**先判 HTTP 状态码，再判 `code == 0`**。
+
+### 5.4 OSS 细节
+
+#### 对象键
+
+```
+{应用标识}-{uuid4}      例：1456042-3f2a1c9e-…-（uuid4）
+```
+
+#### 签名方式：阿里云 V1（HMAC-SHA1）
+
+与 Coros 通道用的是**同一套 V1 签名**（`core/oss/OssUploaders.kt` 的 `AliyunOssUploader`）：
+
+```
+PUT\n
+{base64(md5(body))}\n
+{contentType}\n
+{date}\n
+x-oss-security-token:{securityToken}\n
+/{bucket}/{objectKey}
+```
+
+`Authorization: OSS {accessKeyId}:{base64(hmacSha1(accessKeySecret, stringToSign))}`
+
+#### 地址风格：虚拟托管优先，路径风格兜底
+
+平台下发的 `endpoint` 形态不固定（可能带 `https://` 前缀、尾部斜杠，甚至带路径段），
+所以客户端**先把 endpoint 归一化**：去掉 scheme、去掉尾部 `/`、去掉路径段，只留主机名。
+
+然后：
+
+1. 先试**虚拟托管风格**：`https://{bucket}.{host}/{object-key}`
+2. 失败**回退一次**到**路径风格**：`https://{host}/{bucket}/{object-key}`
+
+V1 的 canonical resource 在**两种风格下都是** `/{bucket}/{object-key}`，
+所以**同一个签名覆盖两种风格**，回退时不需要重算签名。
+
+> 这个回退**只对平台下发的 endpoint 开启**。Coros 的 bucket 是已知的
+> （`coros-oss` @ `oss-cn-beijing.aliyuncs.com`），而且虚拟托管风格是拿真实账号
+> 验证过的，所以它保持**单次尝试 + 原错误消息**不变——否则一次真正的权限错误
+> 会被第二次注定失败的请求掩盖掉原因。实现见
+> `core/oss/OssUploaders.kt` 的 `AliyunOssUploader(fallbackToPathStyle = …)`。
+
+#### content-type
+
+`application/octet-stream`（裸 FIT 没有标准 MIME 类型）。
+
+### 5.5 活动标题（`fileName`）规则
+
+iGPSPORT 里显示的活动标题**来自我们发过去的 `fileName`**，而不是从 FIT 内部解析出来的。
+
+规则：
+
+1. 取**源活动的标题**（源平台提供的活动名）；
+2. 文件名非法字符 `[<>:"/\|?*]` 全部替换成 `_`，再去掉首尾空白；
+3. **扩展名固定为 `.fit`**（标题本身已以 `.fit` 结尾时不再重复追加），
+   整体截断到 120 字符；
+4. 标题为空 / 空白时，退回用**载荷的文件基名**（去扩展名）；再空则用 `activity`。
+
+也就是说，「活动在 iGPSPORT 里叫什么」这件事**由源平台决定**：
+Garmin → iGPSPORT 传过去也叫 Garmin 上的那个名字，Strava → iGPSPORT 同理。
+
+### 5.6 目标端兜底比对（跨平台去重）
+
+iGPSPORT 的上传目标**实现了 `listActivities`**（复用步骤 1 的 token 与 `queryMyActivity` 接口），
+所以引擎的「目标端兜底比对」对 iGPSPORT 同样生效 —— 上传前先在目标端活动列表里比对，
+同一份数据不会被传第二遍。
+
+### 5.7 token 的缓存与探活
+
+- Bearer token **缓存在账号行**里（`accounts.tokenCipher`，用 Keystore 支撑的 `CryptoBox` 加密落库）。
+- 用缓存 token 之前先**探活**：发一次 `queryMyActivity`（`pageSize=1`）。
+- 探活拿到 **HTTP 401** → 判定登录态失效 → **重新登录**并覆盖缓存。
+
+### 5.8 本项目的落地方式
+
+| 位置 | 职责 |
+|---|---|
+| `platform/igpsport/IgpsportGateway.kt` | `IgpsportSource`（下载）+ `IgpsportTarget`（上传）；目标端复用同一个 `IgpsportClient` 的 token 与 `queryMyActivity` |
+| `platform/igpsport/IgpsportOssProvider.kt` | `IgpsportOssProvider` 取 `GetOssTokenForApp` 的凭证，解析成 `IgpsportOssCredentials`（含平台下发的 `endpoint` / `bucketName`） |
+| `core/oss/OssUploaders.kt` | 泛化后的阿里云 V1 签名上传器：`OssUploaders.forAliyun(AliyunOssCredentials)`，endpoint / bucket 由调用方给出（Coros 与 iGPSPORT 共用） |
+| `domain/Models.kt` | `Platform.IGPSPORT` 的 `canBeTarget` 由 `false` 改为 `true` |
+
+上传顺序（`IgpsportTarget.upload()`）：
+
+```
+ensureRawFit(payload)                      ← 必须是裸 FIT
+  → IgpsportOssProvider 取 STS 凭证
+  → OssUploaders.forAliyun(...).upload("1456042-{uuid4}", bytes, "application/octet-stream")
+  → POST {baseUrl}/web-gateway/web-analyze/activity/uploadByOss
+  → 判定：HTTP 200 且 code == 0
+```
+
+### 5.9 坑位清单（实现时必须遵守）
+
+1. **成功判定是「HTTP 200 且 `code == 0`」**，不能只看 HTTP 状态码 ——
+   iGPSPORT 的业务错误会用 200 返回（与 Coros 同类问题，见第三节）；
+   而鉴权失败返回的是 403 + `code == 0` 的畸形响应体（见步骤 4）。
+2. **`fileName` 必须带 `.fit` 扩展名**，且**载荷必须是裸 FIT，不能是 ZIP**。
+3. **区域是账号属性**：token 与站点绑定，中国站的 token 在国际站用会 401。
+4. **`endpoint` / `bucket` 由平台下发**，不要硬编码；先归一化再拼 URL。
+5. **虚拟托管 → 路径风格只回退一次**：两次都失败就是真失败，不要无限重试。
+6. **`1456042-` 这个对象键前缀是参考项目的固定应用标识**，不要改。
+7. **`fileName` 的非法字符要清洗**（`[<>:"/\|?*]` → `_`），否则可能被服务端拒绝。
+8. **OSS PUT 成功不等于导入成功**：导入是否成立要看步骤 4 的 `uploadByOss` 判定，
+   中间会留下一个孤儿对象（OSS 上没有对应活动），这与 Coros 通道的行为一致。
+
+### 5.10 端到端未用真实账号实测
+
+**这条链路没有用真实 iGPSPORT 账号跑通过一次完整上传。**
+
+已实测的只有**路由探活**（2026-10-31，均为未带有效 token 的请求）：
+
+| 请求 | 响应 | 含义 |
+|---|---|---|
+| `GET {baseUrl}/mobile/api/AliyunService/GetOssTokenForApp` | **HTTP 401** | 路由存在，需要鉴权 |
+| `POST {baseUrl}/web-gateway/web-analyze/activity/uploadByOss` | **HTTP 403** `{"code":0,"message":"success","data":"The token was expected to have 3 parts, but got 0."}` | 路由存在，服务端把 bearer token 当 JWT 解析 |
+
+**未实测**：带真实 token 的登录 → 取 OSS 凭证 → OSS `PUT` → `uploadByOss` 通知 → 账号里出现新活动。
+
+因此本节的所有具体结论（凭证字段名、OSS 参数、对象键规则、标题规则）**来自参考项目
+[Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync) 的 `src/igpsport_client.py` 与本项目的实现**，
+**不是**本项目录下的真实报文。请按「协议级实现」对待，不要按「已验证」对待 ——
+这与 Garmin / Coros / Strava 三条通道的实测状态**不同**。

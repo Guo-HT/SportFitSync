@@ -148,7 +148,7 @@ internal class StravaClient(
         )
     }
 
-    suspend fun upload(payload: FitPayload): UploadOutcome = withContext(Dispatchers.IO) {
+    suspend fun upload(payload: FitPayload, activityName: String? = null): UploadOutcome = withContext(Dispatchers.IO) {
         val raw = FitPackaging.ensureRawFit(payload)
         if (raw.zipped) return@withContext UploadOutcome.Failed("无法从压缩包中解析出 FIT 文件")
 
@@ -160,6 +160,13 @@ internal class StravaClient(
                 raw.bytes.toRequestBody("application/octet-stream".toMediaType()),
             )
             .addFormDataPart("data_type", "fit")
+            .apply {
+                // Strava takes the activity title from the upload form; without
+                // it the activity is named after the file we happened to send.
+                if (!activityName.isNullOrBlank()) {
+                    addFormDataPart("name", activityName)
+                }
+            }
             .build()
 
         val body = HttpClients.transfer.newCall(
@@ -237,5 +244,6 @@ internal class StravaSource(private val client: StravaClient) : PlatformSource {
 
 internal class StravaTarget(private val client: StravaClient) : PlatformTarget {
     override val platform: Platform = Platform.STRAVA
-    override suspend fun upload(payload: FitPayload) = client.upload(payload)
+    override suspend fun upload(payload: FitPayload, activityName: String?) =
+        client.upload(payload, activityName)
 }

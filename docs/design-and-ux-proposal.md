@@ -5,6 +5,16 @@
 > 目标工程：`/Users/mac/Code/android/sport-fit-sync-app`
 > 编写日期：2026-10-07
 
+> **后续更新（2026-10-31）**：本稿第 1.2 / 1.3 节把平台范围定为
+> 「源 = Garmin / Coros / iGPSPORT / OneLap / Strava，目标 = Garmin / Coros / Strava，
+> 共 12 条方向」。这个结论**当时是对的**（上游 `garmin-sync-coros` 的 12 个脚本确实
+> 没有一条以 iGPSPORT 为目标），但不是 iGPSPORT 的能力上限：其网页端一直有导入通道
+> （`activity/uploadByOss`），只是上游没接。本项目已于 2026-10-31 把该通道移植进来，
+> iGPSPORT 现在**既作源也作目标**，矩阵变为 **5 源 × 4 目标 − 4 自环 = 16 条方向**。
+> 详见 [`platform-protocols.md` § 五](platform-protocols.md) 与
+> [`SyncDirectionMatrixTest`](../app/src/test/java/com/sportfit/sync/domain/SyncDirectionMatrixTest.kt)。
+> 本稿其余内容按编写时的状态保留。
+
 ---
 
 > 构建 / 安装 / 调试 / 模拟器 / 设备取证 的操作说明见 [`development-handbook.md`](development-handbook.md)。

@@ -87,7 +87,7 @@ internal class CorosTarget(private val client: CorosClient) : PlatformTarget {
     override suspend fun listActivities(limit: Int): List<ActivityMeta> =
         client.listActivities(limit)
 
-    override suspend fun upload(payload: FitPayload): UploadOutcome = withContext(Dispatchers.IO) {
+    override suspend fun upload(payload: FitPayload, activityName: String?): UploadOutcome = withContext(Dispatchers.IO) {
         val userId = client.userId
             ?: return@withContext UploadOutcome.Failed("Coros 未登录，无法上传")
         // The OSS credentials come from the training-centre proxy, which

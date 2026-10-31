@@ -58,5 +58,6 @@ internal class GarminTarget(private val api: GarminApi) : PlatformTarget {
 
     override val platform: Platform = Platform.GARMIN
 
-    override suspend fun upload(payload: FitPayload): UploadOutcome = api.upload(payload)
+    override suspend fun upload(payload: FitPayload, activityName: String?): UploadOutcome =
+        api.upload(payload)
 }

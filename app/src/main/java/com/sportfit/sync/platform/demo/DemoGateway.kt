@@ -100,7 +100,7 @@ private class DemoTarget(private val log: suspend (String) -> Unit) : PlatformTa
 
     override val platform: Platform = Platform.DEMO
 
-    override suspend fun upload(payload: FitPayload): UploadOutcome =
+    override suspend fun upload(payload: FitPayload, activityName: String?): UploadOutcome =
         withContext(Dispatchers.IO) {
             delay(180)
 

@@ -153,13 +153,25 @@ $ADB shell dumpsys window | grep mCurrentFocus
 FATAL | A snapshot operation for 'Pixel_7_Pro' is pending and timeout has expired. Exiting...
 ```
 
-原因是 `~/.android/avd/Pixel_7_Pro.avd/` 下残留 `*.lock`，而该目录在**工作区之外**，
+原因在 `~/.android/avd/Pixel_7_Pro.avd/` 下，而该目录在**工作区之外**，
 默认沙箱模式下不可写。需要在 bash 工具中以一次性更宽权限重试：
 
 ```
 sandbox_permissions: danger-full-access
 justification: 启动 Android 模拟器需要在 ~/.android/avd 下删除上次异常退出残留的快照锁文件并写入 AVD 运行数据
 ```
+
+**要删的不止 `*.lock`**（2026-10-31 实测）：删掉 `multiinstance.lock` 之后模拟器
+**仍然报同样的错**，因为真正卡住启动的是快照待处理标记
+`read-snapshot.txt`（0 字节文件）。两个都要删：
+
+```bash
+rm -f /Users/mac/.android/avd/Pixel_7_Pro.avd/multiinstance.lock
+rm -f /Users/mac/.android/avd/Pixel_7_Pro.avd/read-snapshot.txt
+```
+
+判据是**模拟器能不能起来**，不是锁文件在不在：先用 `adb devices` 看有没有
+`emulator-5554 device`，没有就翻 `/tmp/emulator.log` 找 `FATAL`。
 
 ---
 
@@ -521,7 +533,7 @@ Please refer to 'flow' documentation or use 'flowOn' instead
 | `garmin/GarminAuth.kt` | 104 / 237 | 提交两步验证码 / Garmin 登录成功 |
 | `garmin/GarminApi.kt` | 46 | 访问令牌已过期，正在刷新 |
 | `strava/StravaGateway.kt` | 66 | Strava 令牌已过期，正在刷新 |
-| `igpsport/IgpsportGateway.kt` | 103 | iGPSPORT 登录成功 |
+| `igpsport/IgpsportGateway.kt` | 132 | iGPSPORT 登录成功 |
 | `onelap/OnelapGateway.kt` | 72 | OneLap 登录成功 |
 
 **修复**：两个引擎从 `flow {}` 改为 `channelFlow {}`，`emit` 改为 `send`。
