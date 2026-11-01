@@ -53,6 +53,7 @@ fun AccountEditScreen(
     viewModel: AppViewModel,
     platform: Platform,
     onBack: () -> Unit,
+    onOpenOutbaseAuth: () -> Unit = {},
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -92,25 +93,50 @@ fun AccountEditScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SectionCard(title = "凭据", icon = Icons.Filled.Lock) {
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text(emailLabel) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                SecretField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = if (platform == Platform.STRAVA) "Client Secret" else "密码",
-                )
-                if (isExisting) {
+            if (platform == Platform.OUTBASE) {
+                // Outbase 没有账号密码式的登录接口：登录态就是网页登录后
+                // 留下的 sessionId cookie，所以这一页只有「去登录」这一个动作。
+                SectionCard(title = "Outbase 登录", icon = Icons.Filled.Link) {
                     Text(
-                        "留空表示不修改已保存的凭据。",
+                        "Outbase 没有开放登录接口，App 会在内置网页里完成登录，" +
+                            "并把登录态加密保存在本机。之后同步时不再需要登录。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Button(
+                        onClick = onOpenOutbaseAuth,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            Icons.Filled.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isExisting) "重新登录" else "登录 Outbase")
+                    }
+                }
+            } else {
+                SectionCard(title = "凭据", icon = Icons.Filled.Lock) {
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = { Text(emailLabel) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    SecretField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = if (platform == Platform.STRAVA) "Client Secret" else "密码",
+                    )
+                    if (isExisting) {
+                        Text(
+                            "留空表示不修改已保存的凭据。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
@@ -159,28 +185,38 @@ fun AccountEditScreen(
         }
 
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Button(
-                onClick = {
-                    viewModel.saveAccount(
-                        platform = platform,
-                        email = email.takeIf { it.isNotBlank() },
-                        password = password.takeIf { it.isNotBlank() },
-                        region = region,
-                    )
-                    onBack()
-                },
-                enabled = loaded && (isExisting || (email.isNotBlank() && password.isNotBlank())),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
+            if (platform == Platform.OUTBASE) {
+                // 登录动作本身就会把凭据存下来，没有需要单独「保存」的东西。
+                Text(
+                    if (isExisting) "已保存 Outbase 登录态，可直接用于同步。"
+                    else "登录成功后会自动保存登录态，无需再点保存。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("保存")
+            } else {
+                Button(
+                    onClick = {
+                        viewModel.saveAccount(
+                            platform = platform,
+                            email = email.takeIf { it.isNotBlank() },
+                            password = password.takeIf { it.isNotBlank() },
+                            region = region,
+                        )
+                        onBack()
+                    },
+                    enabled = loaded && (isExisting || (email.isNotBlank() && password.isNotBlank())),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("保存")
+                }
             }
         }
     }

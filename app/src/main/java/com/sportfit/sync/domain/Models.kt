@@ -25,6 +25,15 @@ enum class Platform(
     ONELAP("onelap", "OneLap", canBeSource = true, canBeTarget = false),
 
     /**
+     * Outbase (outbase.cn) — a data aggregation service.
+     *
+     * Target-only: activities are pushed into Outbase's own FIT library, but
+     * Outbase does not expose a per-user activity list to download from, so
+     * it can never be a source.
+     */
+    OUTBASE("outbase", "Outbase", canBeSource = false, canBeTarget = true),
+
+    /**
      * Debug-only rehearsal platform: produces synthetic activities and never
      * touches the network, so the full pipeline can be exercised on a device
      * without real credentials. Hidden from release builds in the UI.

@@ -698,3 +698,146 @@ ensureRawFit(payload)                      ← 必须是裸 FIT
 [Dunky-Z/FitSync](https://github.com/Dunky-Z/FitSync) 的 `src/igpsport_client.py` 与本项目的实现**，
 **不是**本项目录下的真实报文。请按「协议级实现」对待，不要按「已验证」对待 ——
 这与 Garmin / Coros / Strava 三条通道的实测状态**不同**。
+
+---
+
+## 六、Outbase（新增目标端：CDN 暂存 + 注册导入，2026-11-01 接入）
+
+### 6.1 概述：为什么 Outbase 只能当目标端
+
+Outbase（[outbase.cn](https://outbase.cn/)，运营方为「北京适元造物文化有限公司」）是一个运动数据
+聚合服务：它把各家平台的活动收进自己的库，再统一对外提供。
+
+**它没有「我的活动列表」这种面向单个用户的下载接口** —— 登录后能看到的是自己上传过的记录，
+没有可供 App 批量拉取的用户活动目录。因此在本项目里：
+
+| 角色 | 是否支持 | 原因 |
+|---|---|---|
+| 源平台 | ❌ | 无用户活动列表接口 |
+| 目标平台 | ✅ | 有 FIT 上传链路 |
+
+所以 `Platform.OUTBASE` 的定义是 `canBeSource = false, canBeTarget = true`。
+
+### 6.2 协议来源与可信度
+
+Outbase **没有公开的上传 API**。下面的链路来自参考项目
+[Anathleticbicyclist/sync-igpsport-magene-onelap-xingzhe-data-to-outbase](https://github.com/Anathleticbicyclist/sync-igpsport-magene-onelap-xingzhe-data-to-outbase)
+的 `app/src/main/java/com/jichi/ob/api/OutbaseApi.kt`，该项目的注释写明链路是用 HAR 抓包从
+outbase.cn 网页版逆出来的。
+
+**本项目自己复核过的部分**（2026-11-01，只读探活，未带有效登录态）：
+
+| 请求 | 响应 | 含义 |
+|---|---|---|
+| `POST {CDN}/zeusfit/api/h5/sport/upload/list` body `{"index":0,"count":20}` | **HTTP 200** `{"ec":410001,"em":"Please log in",...}` | 路由存在；`ec=410001` 就是「未登录」，与参考项目记录一致 |
+| `GET {CDN}/zeusfit/api/h5/user/info` | **HTTP 200** `{"ec":404,"em":"Not Found"}` | 路由存在但取不到用户名 —— 参考项目同样把 `user/info` 降级为可选、拿不到就回退到 `upload/list` 探活 |
+
+**未实测**：带真实登录态的完整上传（存对象 → 注册 → Outbase 库里出现新活动）。
+
+### 6.3 登录：网页登录 + sessionId cookie
+
+Outbase **没有账号密码的登录接口**。在真机上打开登录页可以看到，它用的是
+**手机号 + 短信验证码**（另有「扫描二维码获取应用程序」），没有用户名密码框。
+
+因此登录必须走 WebView：
+
+1. WebView 打开 `https://outbase.cn/zeusfit/official-website/login.html`；
+2. 用户在页面里完成手机号 + 验证码登录；
+3. 登录成功后站点在 `outbase.cn` 域下种下 `sessionId` cookie；
+4. App 用 `CookieManager.getInstance().getCookie("https://outbase.cn")` 把这个 cookie 读回来，
+   取其中的 `sessionId` 值。
+
+**这个 `sessionId` 就是全部凭据** —— 后续所有接口都靠它，App 把它存在加密的 token 槽位里
+（`AccountRepository.save(token = …)`，走 Android Keystore）。
+
+> 实现要点：进入登录页前要 `CookieManager.removeAllCookies()`，否则上一次登录留下的旧
+> `sessionId` 会让这一屏「看起来已经登录了」。参考项目在 `detectOutbase()` 里同时抓
+> `outbase.cn` 与 `www.outbase.cn` 两个域，本项目只取主域。
+
+### 6.4 上传链路（2 步）
+
+#### 步骤 1：把 FIT 存进 CDN（匿名）
+
+```
+POST https://melon-gateway.immomo.com/zeusfit/resource/h5/upload
+     ?source=zeusfit&id={guid}{yyyymmdd}
+     &uri=/resource/{guid[0:2]}/{guid[2:4]}/{guid}{yyyymmdd}.fit&momoid=0&
+Content-Type: multipart/form-data        (字段名 "file")
+User-Agent: <桌面 Chrome UA>
+Accept: */*
+Origin: https://outbase.cn
+Referer: https://outbase.cn/
+→ {"message":"SUCCESS"}
+```
+
+关键点：
+
+- **`h5` 端点是匿名的**，不需要任何鉴权头 —— 唯一标识这次上传的就是客户端自己编出来的
+  `uri`。旧的 `/zeusfit/resource/upload` 端点需要 `ec=1044` 鉴权，已经不用了。
+- **对象路径由前 4 位十六进制决定两层目录**（`{guid[0:2]}/{guid[2:4]}`），
+  这是存储层的分片规则，不要改。
+- **必须带浏览器的 `Origin` / `Referer` / `User-Agent`**，否则服务端会拒。
+- 这一步失败 = 字节没落盘，**不能继续注册**。
+
+#### 步骤 2：注册成一条活动（需要鉴权）
+
+```
+POST https://melon-gateway.immomo.com/zeusfit/api/h5/sport/upload/fit
+Sessionid: {sessionId}
+Uagent: {浏览器 UA} PCAgent/1.0.0
+Content-Type: application/json
+Origin: https://outbase.cn
+Referer: https://outbase.cn/
+{"fitGuid":"{guid}{yyyymmdd}","sign":"{文件的 MD5}","fileName":"…","fileSize":N}
+→ {"ec":0,...}
+```
+
+`ec` 的含义（参考项目记录 + 本项目实现）：
+
+| `ec` / 消息 | 含义 | 本项目映射 |
+|---|---|---|
+| `0` | 已受理 | `UploadOutcome.Success` |
+| `503` 或消息含「已存在 / 相同时间 / 重复」 | 已经有了 | `UploadOutcome.Duplicate` |
+| `410001` 或消息含「登录」 | 登录态失效 | `PlatformException.Auth` → 引导重新登录 |
+| 消息含「待处理 / 处理中」 | **还在异步解析** | `UploadOutcome.Failed` → 下次同步重试 |
+| 其它 | 未知错误 | `UploadOutcome.Failed` |
+
+### 6.5 坑位清单（实现时必须遵守）
+
+1. **「待处理」绝不能算成功。** Outbase 是**异步解析** FIT 的：注册接口会先回「已受理，
+   文件还在处理」。这时候活动可能根本没进库。如果当成成功写进本地账本，这条活动就永远
+   不会再被同步 —— 静默丢数据。参考项目把它叫 `pending`，不写「已同步」记忆，下次重试；
+   等 Outbase 处理完再注册就会得到「已存在」，这时才落账。本项目的
+   `classifyRegister()` 把「待处理」检查放在 `ec == 0` **之前**，就是为了覆盖
+   `ec=0` 且消息含「待处理」这种组合。
+2. **判定成功要看 `ec`，不能只看 HTTP 状态码** —— 业务错误一样是 HTTP 200。
+3. **载荷必须是裸 FIT，不能是 ZIP**（与 iGPSPORT、Strava 目标端一致）。
+4. **`fileName` 必须以 `.fit` 结尾**。
+5. **上传成功后建议节流**（参考项目每条之间 `delay(400)`），批量上传时能明显降低被风控的概率。
+6. **Outbase 不按内容去重**，重复上传由服务端以「已存在」告知；目标端拿不到活动列表，
+   所以 `PlatformTarget.listActivities()` 对 Outbase 返回空列表，去重退化为
+   「本地账本 + 服务端的「已存在」信号」。
+
+### 6.6 与参考项目的差异
+
+参考项目是「十平台 → Outbase 单向上传」的工具，它的下载端以 **GPX** 为主
+（咕咚 / Zepp / Komoot 等），上传前要用 Outbase 官方的 `gpx2fit.js` 转成 FIT。
+
+**本项目不需要这一层**：Garmin / Coros / Strava / iGPSPORT / OneLap 的下载端本来就产出
+FIT（Strava 走 `export_original`），`FitPackaging.ensureRawFit()` 剥掉 ZIP 之后直接就是
+可上传的 FIT 字节。所以本项目只移植了 Outbase 的**上传侧**协议，没有移植
+`WebBridge` / `gpx2fit.js` / 时区修正 / 多设备伪装那一整套。
+
+### 6.7 端到端未用真实账号实测
+
+**这条链路没有用真实 Outbase 账号跑通过一次完整上传。**
+
+已实测的只有：只读探活（见 6.2）、WebView 登录页在真机上能正常加载并渲染出
+「欢迎使用 Outbase / 获取验证码 / 不发验证码」的短信验证码登录界面（2026-11-01，模拟器
+API 33）。
+
+**未实测**：真实的手机号 + 验证码登录 → 取到 `sessionId` → 存对象 → 注册 → Outbase 库里出现新活动。
+
+因此本节的协议细节（端点、请求头、字段名、`ec` 语义）**来自参考项目的实现**，
+**不是**本项目录下的真实报文。请按「协议级实现」对待，不要按「已验证」对待 ——
+这与 Garmin / Coros / Strava 三条通道的实测状态**不同**。

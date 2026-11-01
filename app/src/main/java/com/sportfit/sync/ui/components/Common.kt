@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.OutlinedFlag
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -85,6 +86,7 @@ fun platformIcon(platform: Platform): ImageVector = when (platform) {
     Platform.STRAVA -> Icons.AutoMirrored.Filled.DirectionsRun
     Platform.IGPSPORT -> Icons.AutoMirrored.Filled.DirectionsBike
     Platform.ONELAP -> Icons.AutoMirrored.Filled.DirectionsBike
+    Platform.OUTBASE -> Icons.Outlined.CloudUpload
     Platform.DEMO -> Icons.Filled.Science
     Platform.LOCAL_FILES -> Icons.Filled.Folder
 }

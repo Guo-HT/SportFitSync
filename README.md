@@ -2,7 +2,7 @@
 
 # SportFit Sync for Android
 
-**把 Garmin / Coros / Strava / iGPSPORT / OneLap 的运动记录，在手机上一键搬到另一个平台。**
+**把 Garmin / Coros / Strava / iGPSPORT / OneLap / Outbase 的运动记录，在手机上一键搬到另一个平台。**
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.21-7F52FF.svg?logo=kotlin)](https://kotlinlang.org)
 [![AGP](https://img.shields.io/badge/AGP-8.10.1-3DDC84.svg?logo=android)](https://developer.android.com)
@@ -40,7 +40,7 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 | | |
 |---|---|
-| **16 条同步方向** | 5 个源平台 × 4 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
+| **21 条同步方向** | 5 个源平台 × 5 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
 | **跨账号去重** | 内容指纹识别「同一份数据换了新 activityId」，避免在目标端制造副本 |
 | **失败可重试** | 单条失败不影响整批；失败项自动重试，也能一键重跑失败集 |
 | **可取消 · 可观察** | 实时进度、逐条日志、前台服务保活，切到后台也不中断 |
@@ -72,25 +72,28 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 方向由「源 × 目标」组合产生，**不需要为每个方向单独写脚本**。
 
-| 源 ↓ / 目标 → | Garmin | Coros | Strava | iGPSPORT |
-|:---|:---:|:---:|:---:|:---:|
-| **Garmin** | — | ✅ | ✅ | ✅ |
-| **Coros** | ✅ | — | ✅ | ✅ |
-| **Strava** | ✅ | ✅ | — | ✅ |
-| **iGPSPORT** | ✅ | ✅ | ✅ | — |
-| **OneLap** | ✅ | ✅ | ✅ | ✅ |
+| 源 ↓ / 目标 → | Garmin | Coros | Strava | iGPSPORT | Outbase |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **Garmin** | — | ✅ | ✅ | ✅ | ✅ |
+| **Coros** | ✅ | — | ✅ | ✅ | ✅ |
+| **Strava** | ✅ | ✅ | — | ✅ | ✅ |
+| **iGPSPORT** | ✅ | ✅ | ✅ | — | ✅ |
+| **OneLap** | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-**5 个源 × 4 个目标 − 4 个自环 = 16 条方向。** 这条矩阵由
+**5 个源 × 5 个目标 − 4 个自环 = 21 条方向。** 这条矩阵由
 [`SyncDirectionMatrixTest`](app/src/test/java/com/sportfit/sync/domain/SyncDirectionMatrixTest.kt)
 钉死：其中 12 条逐一对应上游 Python 项目的 `<src>_sync_<dst>.py` 脚本，
-另外 4 条是本项目自己接的 iGPSPORT 目标方向——
+另外 4 条是本项目自己接的 iGPSPORT 目标方向，
+再往后 5 条是 2026-11-01 接入的 Outbase 目标方向——
 少一条就编译失败——**方向数变了，你会立刻知道**。
 
 `iGPSPORT` 现在**既作源也作目标**：它的网页端本来就有导入通道，只是上游项目从没接，
 本项目 2026-10-31 补上了（见[平台协议 § 五](docs/platform-protocols.md)）。
 `OneLap` 仍然只能作源——它确实没有导入接口。
+`Outbase` **只能作目标**：它是一个数据聚合服务，没有面向单个用户的活动列表接口，
+所以只能往里推（见[平台协议 § 六](docs/platform-protocols.md)）。
 
-> ⚠️ iGPSPORT 这条上传通道是**移植**自另一个 Python 项目的，
+> ⚠️ iGPSPORT 与 Outbase 这两条上传通道是**移植**自其它项目的，
 > **本项目尚未用真实账号端到端跑通**，实测状态与 Garmin / Coros / Strava 不同。
 
 ---
@@ -113,6 +116,7 @@ app/src/main/java/com/sportfit/sync/
 │   ├── strava/      OAuth2（内嵌 WebView 回调）
 │   ├── igpsport/    Bearer token，cn/global 双站点，OSS 暂存 + uploadByOss 导入
 │   ├── onelap/      明文 HTTP + MD5（域名白名单）
+│   ├── outbase/     WebView 登录取 sessionId cookie，CDN 暂存 + 注册导入
 │   └── demo/        演练平台（仅 Debug）
 ├── data/
 │   ├── local/       Room 7 张表（实体 / DAO / 迁移）
@@ -412,7 +416,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ```bash
 ./build.sh :app:assembleDebug            # 构建 debug APK
-./build.sh :app:testDebugUnitTest        # JVM 单元测试（116 项，秒级）
+./build.sh :app:testDebugUnitTest        # JVM 单元测试（136 项，秒级）
 ./build.sh :app:connectedDebugAndroidTest # 仪器测试（22 项，需模拟器在线）
 ./build.sh clean                         # 清理构建产物
 ```
@@ -463,7 +467,7 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 
 | 类型 | 数量 | 运行方式 |
 |---|---|---|
-| JVM 单元测试 | **116** 项 / 14 个测试类 | `./build.sh :app:testDebugUnitTest` |
+| JVM 单元测试 | **136** 项 / 15 个测试类 | `./build.sh :app:testDebugUnitTest` |
 | 仪器测试 | **22** 项 / 5 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
 
 覆盖的关键行为：
@@ -473,9 +477,11 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
   `no_token` 与 `token_invalid` 区分、旧接口永远兜底
 - **OSS endpoint 归一化**（10 项）：scheme / 尾部斜杠 / 路径剥离、端口保留、空值拒绝
 - **iGPSPORT OSS 凭证**（8 项）：响应解析、业务错误、字段缺失、畸形 JSON
+- **Outbase 上传协议**（20 项）：对象 URL 的分片规则、注册体的 MD5 签名、
+  `ec` 语义（成功 / 重复 / 登录失效 / **待处理不算成功**）、`sessionId` cookie 提取
 - **同步候选选择**（25 项）：失败可重试、排除优先、指纹去重、处理量上限
 - **内容指纹**（16 项）：归一化、无时间回落 `NONE`、大小写与空白差异
-- **方向矩阵**（8 项）：16 条方向逐一钉死（上游 12 条脚本 + 4 条 iGPSPORT 目标方向）
+- **方向矩阵**（8 项）：21 条方向逐一钉死（上游 12 条脚本 + 4 条 iGPSPORT + 5 条 Outbase 目标方向）
 - **Garmin OAuth1**（5 项）：签名基串、`login-url` 双编码回归、`mfa_token` 参与签名
 - **缓存保留策略**（仪器 10 项）：安全项清理不动账本、危险项需 `force`、日志 30 天 / 历史 100 条
 - **同步引擎**（仪器 5 项）：逐条失败隔离、重试计数、取消
@@ -498,7 +504,10 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 3. 注册到 `PlatformRegistry.gateway()`。
 4. 若需要额外字段（区域、client id），在 `AccountEditScreen.regionOptions()` 里补选项。
 5. **更新 `SyncDirectionMatrixTest` 的 `upstreamDirections`**（或
-   `igpsportTargetDirections`）——这个测试会强制你面对「方向数变了」这件事。
+   `igpsportTargetDirections` / `outbaseTargetDirections`）——这个测试会强制你面对
+   「方向数变了」这件事。
+6. 若平台的凭据不是「用户名 + 密码」，还要在 `AccountEditScreen` 里给它单独开一个分支
+   （Outbase 走的是 WebView 登录，凭据是网页登录留下的 `sessionId` cookie）。
 
 ### 新增一条同步方向
 
@@ -520,6 +529,7 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 | iGPSPORT 真实拉取 | 未实测 |
 | **iGPSPORT 上传通道**（OSS 暂存 + `uploadByOss`） | ⚠️ **未端到端实测**。方案移植自另一个 Python 项目，本项目未用真实账号跑通；已实测的只是两个接口的**路由探活**（未带有效 token，分别返回 401 / 403） |
 | OneLap 真实拉取 | 未实测 |
+| **Outbase 上传通道**（CDN 暂存 + 注册导入） | ⚠️ **未端到端实测**。方案移植自另一个开源项目，本项目未用真实账号跑通；已实测的只是两个只读接口的**路由探活**（未带有效登录态，分别返回 `ec=410001` / `ec=404`），以及 WebView 登录页在真机上能正常渲染出短信验证码登录界面 |
 | release 构建与签名 | **未验证**（只构建过 debug） |
 | 通知栏「取消」按钮 | 未做（通知目前只展示进度） |
 | 导出附 CSV 清单 | 未做 |

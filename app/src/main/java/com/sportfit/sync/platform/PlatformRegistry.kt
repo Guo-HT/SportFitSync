@@ -6,6 +6,7 @@ import com.sportfit.sync.platform.demo.DemoGateway
 import com.sportfit.sync.platform.garmin.GarminGateway
 import com.sportfit.sync.platform.igpsport.IgpsportGateway
 import com.sportfit.sync.platform.onelap.OnelapGateway
+import com.sportfit.sync.platform.outbase.OutbaseGateway
 import com.sportfit.sync.platform.strava.StravaGateway
 
 /**
@@ -22,6 +23,7 @@ object PlatformRegistry {
         Platform.STRAVA -> StravaGateway
         Platform.IGPSPORT -> IgpsportGateway
         Platform.ONELAP -> OnelapGateway
+        Platform.OUTBASE -> OutbaseGateway
         Platform.DEMO -> DemoGateway
         // Not a network platform: `LOCAL_FILES` is only a history label, and
         // nothing may ask the registry for a gateway for it.

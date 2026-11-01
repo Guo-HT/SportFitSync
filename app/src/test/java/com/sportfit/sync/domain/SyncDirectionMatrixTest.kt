@@ -67,8 +67,23 @@ class SyncDirectionMatrixTest {
         "onelap->igpsport",
     )
 
+    /**
+     * Outbase is target-only, so every source can push into it.
+     *
+     * It was added after the upstream projects, which is why it does not
+     * appear in the "matches the upstream" assertions below.
+     */
+    private val outbaseTargetDirections = setOf(
+        "garmin->outbase",
+        "coros->outbase",
+        "strava->outbase",
+        "igpsport->outbase",
+        "onelap->outbase",
+    )
+
     /** Every direction the app supports. */
-    private val expectedDirections = upstreamDirections + igpsportTargetDirections
+    private val expectedDirections = upstreamDirections + igpsportTargetDirections +
+        outbaseTargetDirections
 
     /** Product platforms only: rehearsal and export are not destinations. */
     private val realPlatforms = Platform.entries.filter {
@@ -89,7 +104,7 @@ class SyncDirectionMatrixTest {
         // the right-hand side of a sync script name.
         assertEquals(
             setOf("garmin", "coros", "strava", "igpsport"),
-            realPlatforms.filter { it.canBeTarget }.map { it.key }.toSet(),
+            realPlatforms.filter { it.canBeTarget && it != Platform.OUTBASE }.map { it.key }.toSet(),
         )
     }
 
@@ -104,7 +119,7 @@ class SyncDirectionMatrixTest {
             }
             .toSet()
 
-        assertEquals(16, derived.size)
+        assertEquals(21, derived.size)
         assertEquals(expectedDirections, derived)
     }
 
@@ -135,14 +150,15 @@ class SyncDirectionMatrixTest {
 
     @Test
     fun `self directions are the four the picker must exclude`() {
-        // 5 sources x 4 targets = 20 combinations, minus the four self
+        // 5 sources x 5 targets = 25 combinations, minus the four self
         // directions (garmin, coros, strava and igpsport on both sides) =
-        // the 16 supported directions.
+        // the 21 supported directions. Outbase cannot be a source, so it
+        // never contributes a self direction.
         val allCombinations = realPlatforms.count { it.canBeSource } *
             realPlatforms.count { it.canBeTarget }
         val selfDirections = realPlatforms.count { it.canBeSource && it.canBeTarget }
 
-        assertEquals(20, allCombinations)
+        assertEquals(25, allCombinations)
         assertEquals(4, selfDirections)
         assertEquals(expectedDirections.size, allCombinations - selfDirections)
     }
@@ -151,7 +167,7 @@ class SyncDirectionMatrixTest {
     fun `the rehearsal platform never leaks into a release build`() {
         val releasePickable = Platform.pickable(includeDemo = false).map { it.key }.toSet()
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport", "onelap"),
+            setOf("garmin", "coros", "strava", "igpsport", "onelap", "outbase"),
             releasePickable,
         )
         assertTrue("demo" in Platform.pickable(includeDemo = true).map { it.key })
@@ -159,8 +175,11 @@ class SyncDirectionMatrixTest {
 
     @Test
     fun `accounts can only be bound for real platforms`() {
+        // Outbase counts: it is a real platform, just not one the upstream
+        // projects had. Its credential is the session cookie from the web
+        // login rather than a username and password.
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport", "onelap"),
+            setOf("garmin", "coros", "strava", "igpsport", "onelap", "outbase"),
             Platform.accountPlatforms.map { it.key }.toSet(),
         )
     }

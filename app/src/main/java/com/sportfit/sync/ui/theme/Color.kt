@@ -60,6 +60,7 @@ object PlatformPalette {
     val strava = Color(0xFFFC5200)
     val igpsport = Color(0xFF12B886)
     val onelap = Color(0xFF5B6CFF)
+    val outbase = Color(0xFF00897B)
     val demo = Color(0xFF7A5AF8)
     val local = Color(0xFF6B7280)
 }

@@ -36,6 +36,7 @@ import com.sportfit.sync.ui.screens.ActivityPickerScreen
 import com.sportfit.sync.ui.screens.CacheScreen
 import com.sportfit.sync.ui.screens.HistoryScreen
 import com.sportfit.sync.ui.screens.JobDetailScreen
+import com.sportfit.sync.ui.screens.OutbaseAuthScreen
 import com.sportfit.sync.ui.screens.SettingsScreen
 import com.sportfit.sync.ui.screens.StravaAuthScreen
 import com.sportfit.sync.ui.screens.SyncScreen
@@ -52,6 +53,7 @@ internal object Routes {
     const val ACCOUNT_EDIT = "account/{platform}"
     const val CACHE = "cache"
     const val STRAVA_AUTH = "strava-auth"
+    const val OUTBASE_AUTH = "outbase-auth"
     const val JOB = "job/{jobId}"
 
     fun accountEdit(platform: Platform) = "account/${platform.key}"
@@ -164,10 +166,17 @@ fun AppRoot(viewModel: AppViewModel) {
                     viewModel = viewModel,
                     platform = platform,
                     onBack = { navController.popBackStack() },
+                    onOpenOutbaseAuth = { navController.navigate(Routes.OUTBASE_AUTH) },
                 )
             }
             composable(Routes.STRAVA_AUTH) {
                 StravaAuthScreen(
+                    viewModel = viewModel,
+                    onDone = { navController.popBackStack() },
+                )
+            }
+            composable(Routes.OUTBASE_AUTH) {
+                OutbaseAuthScreen(
                     viewModel = viewModel,
                     onDone = { navController.popBackStack() },
                 )

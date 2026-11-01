@@ -820,6 +820,35 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _message.value = null
     }
 
+    // ---- Outbase 登录 -----------------------------------------------------
+
+    /**
+     * Stores the session id harvested from the Outbase login page.
+     *
+     * Outbase has no token endpoint — the `sessionId` cookie *is* the
+     * credential — so it is stored in the same encrypted token slot the other
+     * platforms use for their session material.
+     */
+    fun completeOutbaseAuth(sessionId: String) {
+        viewModelScope.launch {
+            try {
+                accountRepository.save(
+                    platform = Platform.OUTBASE,
+                    email = null,
+                    password = null,
+                    region = null,
+                    token = sessionId,
+                )
+                accountRepository.updateStatus(Platform.OUTBASE, AccountEntity.STATUS_CONNECTED)
+                _message.value = "Outbase 登录成功"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _message.value = error.toUserMessage()
+            }
+        }
+    }
+
     companion object {
         private const val MAX_UI_LOG_LINES = 400
 

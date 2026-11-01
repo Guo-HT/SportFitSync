@@ -336,6 +336,7 @@ fun Platform.accentColor(): Color = when (this) {
     Platform.STRAVA -> PlatformPalette.strava
     Platform.IGPSPORT -> PlatformPalette.igpsport
     Platform.ONELAP -> PlatformPalette.onelap
+    Platform.OUTBASE -> PlatformPalette.outbase
     Platform.DEMO -> PlatformPalette.demo
     Platform.LOCAL_FILES -> PlatformPalette.local
 }
