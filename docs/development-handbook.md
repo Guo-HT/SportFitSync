@@ -1222,3 +1222,109 @@ navController.navigate(tab.route) {
   选中了反而意外；
 - 统计数字（活动总数 / 可同步）仍然按**全量**算，不受分页影响：
   `pickerItems` 一次取回全量，分页只发生在展示层。
+
+---
+
+## 16. 发布为 GitHub Release
+
+### 16.1 一条命令
+
+```bash
+tools/release.sh 0.1.0 tmp/release-notes-0.1.0.md
+```
+
+脚本会依次做完：检查工作区干净 → 构建签名 APK → `apksigner` 验签 →
+打 annotated tag → 推 commit 与 tag → 建 Release → 上传 APK → 回读校验资产体积。
+
+GitHub 令牌从 macOS keychain 取（`git credential fill`），不落盘、不进 shell 历史。
+
+### 16.2 前置条件
+
+| 条件 | 说明 |
+|---|---|
+| `keystore/signing.properties` | 签名配置。**缺失则脚本拒绝发布**——否则产出的是装不上的未签名 APK |
+| `keystore/sportfit-release.jks` | 签名密钥本身，已被 `.gitignore` 忽略，**绝不能进仓库** |
+| keychain 里的 GitHub 凭据 | 与 `git push` 用的是同一个 |
+
+`signing.properties` 的格式见 `app/build.gradle.kts` 顶部注释：
+
+```properties
+storeFile=../keystore/sportfit-release.jks
+storePassword=<密码>
+keyAlias=sportfit
+keyPassword=<密码>
+```
+
+### 16.3 密钥丢了怎么办
+
+签名密钥是**唯一**一份，不能重建——重建意味着新密钥，用户必须先卸载旧版
+（数据会丢）。所以：
+
+- 备份 `keystore/sportfit-release.jks` 与 `signing.properties`，放到密码管理器；
+- 换密钥需要用 `apksigner rotate` 走密钥谱系（v3 签名已启用，谱系文件可承接轮换）；
+- 本项目是侧载分发，不上架应用商店，因此没有 Play 的签名密钥托管可依赖。
+
+### 16.4 踩坑：上传资产的主机不是 api.github.com
+
+**这是本节唯一值得记住的技术细节。**
+
+GitHub 的 release 资产上传端点**不在 `api.github.com`**。正确主机是
+`uploads.github.com`：
+
+```
+https://uploads.github.com/repos/OWNER/REPO/releases/RELEASE_ID/assets{?name,label}
+```
+
+往 `api.github.com/repos/OWNER/REPO/releases/RELEASE_ID/assets` POST 的后果是
+**每一个请求都返回 404**，包括「少传 name 参数」这种本该报 422 的探测请求。
+这个 404 看起来像「release 不存在」，但 release 明明可以正常 GET 到——
+排查时会被带偏很久。
+
+正确做法是**不要硬编码主机**，从 release 对象里读：
+
+```bash
+curl -sS "$API/releases/$RELEASE_ID" | jq -r '.upload_url'
+```
+
+### 16.5 踩坑：HTTP/2 会在上传中途断流
+
+13 MB 的上传在 HTTP/2 下会随机断在几百 KB 处，报
+`HTTP/2 stream 1 was not closed cleanly: PROTOCOL_ERROR`，
+GitHub 随后回一个 404（很容易被误读成「release 不存在」）。
+
+**强制 HTTP/1.1**：`curl --http1.1`。
+`git config http.version HTTP/1.1`（本仓库已设）对 git 同样重要。
+
+另外两个配套参数：
+
+| 参数 | 作用 |
+|---|---|
+| `-H "Expect:"` | 关掉 `100-continue` 握手，少一次往返 |
+| `--speed-time 90 --speed-limit 2000` | 速度低于 2 KB/s 超过 90 秒就判定为卡死并重试，而不是干等到超时 |
+
+### 16.6 校验：发布后要验证「用户下载到的字节」
+
+发布成功不等于用户能拿到完整文件。本机到 GitHub 的链路会截断长传输，
+`curl` 下载 13 MB 可能只拿到 3 MB——**但那是本地网络问题，不是发布问题**。
+
+可靠的验证方式：**分块续传 + 校验和**。
+
+```bash
+# API 侧是权威：size 字段应与本地 APK 字节数一致
+curl -sS "$API/releases/tags/v0.1.0" | jq -r '.assets[0].size'
+
+# 下载侧：带 Range 头续传下完，再比对 sha256
+# （curl -C - 对 release 下载链接不生效，GitHub 的 302 到 CDN 后 Range 丢失）
+```
+
+release notes 里的 SHA-256 就是给用户比对用的。
+
+### 16.7 版本号
+
+`app/build.gradle.kts` 的 `versionName` / `versionCode` 要与 tag 一致：
+
+| tag | versionName | versionCode |
+|---|---|---|
+| `v0.1.0` | `0.1.0` | 1 |
+
+`versionCode` 单调递增，**不要复用**——用户侧靠它判断能否覆盖安装。
