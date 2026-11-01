@@ -38,6 +38,20 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+          WorkManager promotes the background sync worker to a foreground
+          service (see SyncWorker.setForeground), which uses WorkManager's own
+          SystemForegroundService. Android 14 (API 34) requires that service to
+          declare a foreground service type matching the one the worker passes
+          to ForegroundInfo — without this, the promotion throws at runtime.
+          The tools:node="merge" overlays the type onto the entry that the
+          androidx.work library contributes.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
     </application>
 
 </manifest>

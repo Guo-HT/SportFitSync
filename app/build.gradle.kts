@@ -1,9 +1,38 @@
+// `java` resolves to the Gradle Java extension inside a .gradle.kts script,
+// which shadows the `java` package. Import the type explicitly so that
+// `Properties()` below is not resolved against the extension.
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
+}
+
+// Release signing is opt-in and optional.
+//
+// The keystore and its credentials live in `keystore/` at the repository root
+// and are gitignored — a signing key must never reach the repository. When
+// `keystore/signing.properties` is absent (a fresh clone, or CI without the
+// secret mounted) the release build still succeeds; it simply produces an
+// unsigned APK. Debug builds are signed with the auto-generated debug
+// keystore either way.
+//
+// To produce a signed release APK, create the properties file with these keys:
+//
+//   storeFile=../keystore/sportfit-release.jks
+//   storePassword=<password>
+//   keyAlias=<alias>
+//   keyPassword=<password>
+//
+// `storeFile` is resolved relative to this module directory (app/).
+val releaseSigning = Properties().apply {
+    val propsFile = rootProject.file("keystore/signing.properties")
+    if (propsFile.isFile) {
+        propsFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -22,6 +51,21 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        if (releaseSigning.isNotEmpty()) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+                // v2 alone is enough to install, but v3 carries the signing
+                // key lineage that makes a future key rotation possible
+                // without forcing users to reinstall.
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -33,6 +77,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Null when no keystore/signing.properties is present: the build
+            // then emits an unsigned APK instead of failing.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

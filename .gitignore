@@ -24,6 +24,11 @@ tmp/
 # Machine-specific
 local.properties
 
+# Release signing key and its credentials. These must never be committed —
+# a leaked key lets anyone ship updates that your users would trust.
+# See app/build.gradle.kts for the expected property names.
+keystore/
+
 # Scratch dir used when pulling the on-device database during verification.
 .dbcheck/
 
