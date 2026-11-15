@@ -145,7 +145,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("每次同步处理条数", style = MaterialTheme.typography.bodyMedium)
+                Text("每次拉取活动条数", style = MaterialTheme.typography.bodyMedium)
                 SoftChip("${settings.listLimit} 条")
             }
             ListLimitSlider(
@@ -159,8 +159,9 @@ fun SettingsScreen(
                 },
             )
             InfoBar(
-                "每次同步最多处理 ${settings.listLimit} 条活动。账号的历史活动会在配置时全量存到本地，" +
-                    "之后只做增量更新。可在「选择活动同步」页调整后再同步。",
+                "这一条只管「每次从平台补拉多少条新活动」。本地已经存着的历史活动，" +
+                    "「一键同步全部」会一次全部推完，不受这个数字限制。" +
+                    "账号的历史活动会在配置时全量存到本地，之后只做增量更新。",
             )
         }
 

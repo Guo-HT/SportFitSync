@@ -63,6 +63,9 @@ class SyncWorker(
                         source = source,
                         target = target,
                         listLimit = settings.listLimit,
+                        // 后台作业是无人值守的：这一轮最多推这么多，
+                        // 剩下的留给下个周期接着推（账本记着推到哪里了）。
+                        uploadLimit = settings.listLimit,
                     ),
                 )
                 .collect { /* progress is persisted to the DB as it happens */ }

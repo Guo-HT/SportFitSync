@@ -426,8 +426,8 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ```bash
 ./build.sh :app:assembleDebug            # 构建 debug APK
-./build.sh :app:testDebugUnitTest        # JVM 单元测试（138 项，秒级）
-./build.sh :app:connectedDebugAndroidTest # 仪器测试（22 项，需模拟器在线）
+./build.sh :app:testDebugUnitTest        # JVM 单元测试（140 项，秒级）
+./build.sh :app:connectedDebugAndroidTest # 仪器测试（26 项，需模拟器在线）
 ./build.sh clean                         # 清理构建产物
 ```
 
@@ -477,8 +477,8 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 
 | 类型 | 数量 | 运行方式 |
 |---|---|---|
-| JVM 单元测试 | **138** 项 / 15 个测试类 | `./build.sh :app:testDebugUnitTest` |
-| 仪器测试 | **22** 项 / 5 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
+| JVM 单元测试 | **140** 项 / 15 个测试类 | `./build.sh :app:testDebugUnitTest` |
+| 仪器测试 | **26** 项 / 5 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
 
 覆盖的关键行为：
 
@@ -499,6 +499,9 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 - **导出**（仪器 2 项 + 5 项命名测试）：MediaStore 写入并读回比对、文件名清洗
 - **数据库迁移**（仪器 3 项）：v2→v3 保住账号与账本；v3→v4 把国区佳明的行改写到新 key
   （凭据内容不动，国际区的行原样不动）
+- **同步一次推完**（仪器 2 项）：本地积压 250 条时，「一键同步全部」必须处理 250 条以上
+  （曾经被「每次最多 200 条」截断，按钮写着「全部」实际只走 200 条）；
+  后台定时同步仍按设置里的条数有界，无人值守的作业不能霸着设备跑几小时
 - **同步期间不熄屏**（仪器 2 项）：窗口 `FLAG_KEEP_SCREEN_ON` 跟随同步状态——
   跑起来时点亮、结束后恢复（用演练平台跑真实一轮同步来验证）
 

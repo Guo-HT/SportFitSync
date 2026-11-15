@@ -39,6 +39,17 @@ data class SyncRequest(
     val includeAlreadySynced: Boolean = false,
     /** Upper bound on how many source activities to pull down for the run. */
     val listLimit: Int = 200,
+    /**
+     * 上传条数上限；`null` = 不限（把积压一次全推完）。
+     *
+     * 手动「一键同步全部」传 `null`：按钮写着「全部」，只推 200 条等于骗人 ——
+     * 刚配好的账号本地已经存了最多 5000 条历史，用户点一次却只走 200 条，
+     * 剩下的还得按十几次才推得完。
+     *
+     * 后台定时同步传一个有界的值：那是无人值守的作业，不该霸着设备跑几小时；
+     * 账本记着推到哪里了，下个周期接着推。
+     */
+    val uploadLimit: Int? = null,
 ) {
     val direction: SyncDirection get() = SyncDirection(source, target)
 }
@@ -171,7 +182,7 @@ class SyncEngine(
             // 增量更新：网络上只取最近的一批并落库，活动的完整历史以本地库为准。
             // 首次配置账号时历史已经全量拉了下来（见 [warmUpPlatform]），之后
             // 每次同步只补最新的一批，历史活动不会被反复下载。
-            log("读取 ${request.source.displayName} 活动列表（增量，本次最多 ${request.listLimit} 条）…")
+            log("读取 ${request.source.displayName} 活动列表（增量，本次最多补拉 ${request.listLimit} 条新的）…")
             val fetched = source.listActivities(request.listLimit)
                 .distinctBy { it.id }
             log("本次拉取 ${fetched.size} 条活动")
@@ -242,14 +253,19 @@ class SyncEngine(
                     "待同步 ${plan.candidates.size} 条",
             )
 
-            // 单次运行的处理量仍受「每次最多 N 条」限制；用户显式勾选的活动不受限制。
+            // 上传条数的上限跟「拉多少条新的」是两回事：
+            // listLimit 管的是这一轮从平台补多少条新的活动；
+            // 真正要推多少条，取决于本地库里积压了多少 —— 手动「一键同步全部」
+            // 传的是 null（不限），后台定时同步才带上界。
             val candidates = SyncPlanner.applyLimit(
                 candidates = plan.candidates,
-                limit = request.listLimit,
+                limit = request.uploadLimit,
                 explicitSelection = request.selectedIds != null,
             )
             if (candidates.size < plan.candidates.size) {
-                log("单次上限 ${request.listLimit} 条，本次先处理前 ${candidates.size} 条")
+                log("单次上限 ${request.uploadLimit} 条，本次先处理前 ${candidates.size} 条")
+            } else if (request.uploadLimit == null) {
+                log("本次把积压的 ${candidates.size} 条一次全部推完")
             }
             total = candidates.size
 

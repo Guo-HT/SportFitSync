@@ -225,16 +225,19 @@ object SyncPlanner {
      * 活动列表是按时间倒序的，所以这个上限留下的是最新的那批 —— 和旧版
      * 「只拉最新 N 条」的行为一致。
      *
+     * `limit` 为 `null` 表示不限：手动「一键同步全部」要把积压一次推完，
+     * 不能按固定条数截断。
+     *
      * 显式勾选永远不被收窄：用户点名了哪几条，这次就跑哪几条，
      * 即使这一批比平常的上限还多。
      */
     fun applyLimit(
         candidates: List<ActivityMeta>,
-        limit: Int,
+        limit: Int?,
         explicitSelection: Boolean,
     ): List<ActivityMeta> = when {
         explicitSelection -> candidates
-        limit <= 0 -> candidates
+        limit == null || limit <= 0 -> candidates
         else -> candidates.take(limit)
     }
 }

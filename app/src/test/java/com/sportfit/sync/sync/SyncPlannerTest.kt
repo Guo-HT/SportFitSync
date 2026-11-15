@@ -385,7 +385,7 @@ class SyncPlannerTest {
     // ---- 单次运行的处理量上限 --------------------------------------------
 
     @Test
-    fun `默认只处理最新的一批活动`() {
+    fun `后台同步按上限只处理最新的一批活动`() {
         // 活动按时间倒序排列，上限保留的就是最新的那批 —— 和旧版
         // 「只拉最新 N 条」的行为一致。
         val limited = SyncPlanner.applyLimit(
@@ -415,5 +415,29 @@ class SyncPlannerTest {
             explicitSelection = false,
         )
         assertEquals(4, limited.size)
+    }
+
+    @Test
+    fun `上限为 null 表示不限制`() {
+        // 手动「一键同步全部」传的就是 null：本地库里积压了多少就推多少，
+        // 不能被一个固定条数截断 —— 按钮写着「全部」，只推 200 条等于骗人。
+        val limited = SyncPlanner.applyLimit(
+            candidates = activities,
+            limit = null,
+            explicitSelection = false,
+        )
+        assertEquals(listOf("1", "2", "3", "4"), limited.map { it.id })
+    }
+
+    @Test
+    fun `不限上限时积压多少就处理多少`() {
+        // 5000 条积压也不能被砍成 200 条。
+        val backlog = (1..5000).map { index -> activities[index % activities.size].copy(id = "$index") }
+        val limited = SyncPlanner.applyLimit(
+            candidates = backlog,
+            limit = null,
+            explicitSelection = false,
+        )
+        assertEquals(5000, limited.size)
     }
 }

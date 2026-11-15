@@ -6,11 +6,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sportfit.sync.cache.CacheManager
 import com.sportfit.sync.data.local.AppDatabase
+import com.sportfit.sync.data.local.CachedActivityEntity
 import com.sportfit.sync.data.local.SyncJobEntity
 import com.sportfit.sync.data.repo.AccountRepository
 import com.sportfit.sync.domain.Platform
 import com.sportfit.sync.domain.SyncStatus
 import com.sportfit.sync.platform.MfaProvider
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -207,5 +209,79 @@ class SyncEngineTest {
             2,
             db.syncDao().record("demo", "demo", "demo-5")?.attempts,
         )
+    }
+
+    /**
+     * 「一键同步全部」必须把积压一次推完，不能停在固定条数上。
+     *
+     * 这条用例钉的是一个真实缺陷：手动同步曾经被「每次最多 N 条」截断，
+     * 而那个 N（默认 200）管的是**这一轮从平台补拉多少条新的**，
+     * 不是「本地已经存着的活动最多推多少条」。
+     *
+     * 后果很直观：账号配好后本地已经存了最多 5000 条历史，用户点一次
+     * 「一键同步全部」却只走 200 条，剩下的还得按十几次才推得完 ——
+     * 按钮写着「全部」，实际只同步了 200 条。
+     */
+    @Test
+    fun sync_all_processes_the_whole_backlog_not_just_two_hundred() = runTest {
+        // 模拟「配置账号时历史活动已全量入库」：往本地缓存里塞 250 条。
+        val backlog = (1..250).map { index ->
+            CachedActivityEntity(
+                platform = Platform.DEMO.key,
+                activityId = "backlog-$index",
+                name = "积压活动 $index",
+                // 每条的时间、距离、时长都不同：内容指纹不能把它们判成同一份数据，
+                // 否则会被去重掉，测的就不是「条数」了。
+                startTime = 1_700_000_000_000L + index * 60_000L,
+                distanceMeters = 5_000.0 + index * 137.0,
+                durationSec = 1_500L + index * 61L,
+                sportType = "running",
+            )
+        }
+        db.activityDao().upsertAll(backlog)
+
+        // Started 事件带的就是本次要处理的条数，在真正开始上传之前就发出来了。
+        val started = engine.run(
+            SyncRequest(source = Platform.DEMO, target = Platform.DEMO),
+        ).first { it is SyncEvent.Started }
+
+        val total = (started as SyncEvent.Started).total
+        assertTrue(
+            "「一键同步全部」被截断了：只处理了 $total 条，积压有 250 条以上",
+            total > 200,
+        )
+        assertTrue("应把本地缓存里的积压全部纳入本次", total >= backlog.size)
+    }
+
+    /**
+     * 后台定时同步是无人值守的作业：这一轮必须有界。
+     *
+     * 手动同步不限，但后台作业不能霸着设备跑几小时 —— 剩下的交给下个周期，
+     * 账本记着推到哪里了。
+     */
+    @Test
+    fun the_background_run_stays_within_its_upload_limit() = runTest {
+        val backlog = (1..20).map { index ->
+            CachedActivityEntity(
+                platform = Platform.DEMO.key,
+                activityId = "bg-$index",
+                name = "后台积压 $index",
+                startTime = 1_700_000_000_000L + index * 60_000L,
+                distanceMeters = 5_000.0 + index * 137.0,
+                durationSec = 1_500L + index * 61L,
+                sportType = "running",
+            )
+        }
+        db.activityDao().upsertAll(backlog)
+
+        val started = engine.run(
+            SyncRequest(
+                source = Platform.DEMO,
+                target = Platform.DEMO,
+                uploadLimit = 3,
+            ),
+        ).first { it is SyncEvent.Started }
+
+        assertEquals(3, (started as SyncEvent.Started).total)
     }
 }
