@@ -248,20 +248,25 @@ private fun InfoNote(text: String) {
 
 private fun defaultRegion(platform: Platform): String = when (platform) {
     Platform.GARMIN -> "COM"
+    Platform.GARMIN_CN -> "CN"
     Platform.COROS -> "2"
     Platform.IGPSPORT -> "cn"
     else -> ""
 }
 
 private fun regionOptions(platform: Platform): List<Pair<String, String>>? = when (platform) {
-    Platform.GARMIN -> listOf("COM" to "国际区", "CN" to "中国区")
+    // Garmin no longer offers a region picker: the site follows from the
+    // platform itself (Garmin 国际区 / Garmin 中国区), because the two are
+    // separate accounts with separate credentials.
+    Platform.GARMIN, Platform.GARMIN_CN -> null
     Platform.COROS -> listOf("1" to "国际区", "2" to "中国区", "3" to "欧洲区")
     Platform.IGPSPORT -> listOf("cn" to "中国站", "global" to "国际站")
     else -> null
 }
 
 private fun regionHint(platform: Platform): String = when (platform) {
-    Platform.GARMIN -> "选择错误会导致登录失败：国区账号必须选 garmin.cn。"
+    Platform.GARMIN -> "登录的是 garmin.com（国际区）账号。"
+    Platform.GARMIN_CN -> "登录的是 garmin.cn（中国区）账号。"
     Platform.COROS -> "决定活动来源与 OSS 上传通道（中国区走阿里云，其它走 AWS）。"
     Platform.IGPSPORT -> "两个站点账号不通用。"
     else -> ""

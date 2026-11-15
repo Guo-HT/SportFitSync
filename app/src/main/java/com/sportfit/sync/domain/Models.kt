@@ -18,7 +18,20 @@ enum class Platform(
     val canBeSource: Boolean,
     val canBeTarget: Boolean,
 ) {
-    GARMIN("garmin", "Garmin", canBeSource = true, canBeTarget = true),
+    GARMIN("garmin", "Garmin 国际区", canBeSource = true, canBeTarget = true),
+
+    /**
+     * Garmin 中国区 (garmin.cn).
+     *
+     * 国际区与国区是**两套独立的账号体系**：SSO 域名、OAuth 授权域名、活动接口域名
+     * 全都不同，同一个邮箱在两边也是两个账号，用户也常常两个都有。
+     *
+     * 所以它们不是「一个平台 + 一个区域下拉框」，而是两个平台：
+     * 各自独立保存凭据（Keystore 加密），各自缓存活动列表，
+     * 并且可以互相作为源和目标 —— 国际区 → 国区、国区 → 国际区。
+     */
+    GARMIN_CN("garmin-cn", "Garmin 中国区", canBeSource = true, canBeTarget = true),
+
     COROS("coros", "Coros", canBeSource = true, canBeTarget = true),
     STRAVA("strava", "Strava", canBeSource = true, canBeTarget = true),
     IGPSPORT("igpsport", "iGPSPORT", canBeSource = true, canBeTarget = true),

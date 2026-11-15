@@ -1,5 +1,6 @@
 package com.sportfit.sync.platform.garmin
 
+import com.sportfit.sync.domain.Platform
 import kotlinx.serialization.Serializable
 
 /**
@@ -47,5 +48,15 @@ data class GarminDomains(val domain: String) {
         /** Maps the UI's `COM` / `CN` selector onto a domain. */
         fun fromRegion(region: String?): GarminDomains =
             GarminDomains(if (region.equals("CN", ignoreCase = true)) CHINA else INTERNATIONAL)
+
+        /**
+         * Maps a platform onto the domain it belongs to.
+         *
+         * Since Garmin was split into two platforms ([Platform.GARMIN] and
+         * [Platform.GARMIN_CN]), the platform itself decides the site — the
+         * region stored on the account is only kept for display.
+         */
+        fun fromPlatform(platform: Platform): GarminDomains =
+            GarminDomains(if (platform == Platform.GARMIN_CN) CHINA else INTERNATIONAL)
     }
 }

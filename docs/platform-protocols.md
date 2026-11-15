@@ -126,6 +126,55 @@ multipart/form-data，单个 part：name="file"，filename=<本地文件名>，C
 
 注意 **`connect.garmin.com` 是网页版，不是 API 域名**。
 
+### 1.8.1 国际区与中国区是两个平台（2026-11-15）
+
+这一节是本项目自己的设计决定，不是上游项目的做法。
+
+上游 `garmin-sync-coros` 用一个 `region` 下拉框（`COM` / `CN`）选择站点，
+**一个平台只能存一个佳明账号**。但实际上：
+
+- 国际区与中国区是**两套独立的账号体系** —— SSO 域名、OAuth 授权域名、
+  `connectapi` 域名全都不同，同一个邮箱在两边是两个不同的账号；
+- 用户**常常两个站都有账号**，一个下拉框根本装不下；
+- 两个站之间互搬活动是真实存在的需求（国区活动传国际区、或反过来）。
+
+所以本项目把佳明**拆成了两个平台**：
+
+| | 国际区 | 中国区 |
+|---|---|---|
+| 平台 key | `garmin` | `garmin-cn` |
+| 显示名 | Garmin 国际区 | Garmin 中国区 |
+| 站点 | `garmin.com` | `garmin.cn` |
+| 可作源 / 可作目标 | ✅ / ✅ | ✅ / ✅ |
+| 账号行 | 独立一行（Keystore 加密） | 独立一行（Keystore 加密） |
+| 活动缓存 | 独立一份 | 独立一份 |
+| 去重账本 | 独立一份 | 独立一份 |
+
+**站点由平台自己决定**，不再由账号的 `region` 列决定 ——
+`GarminDomains.fromPlatform(platform)` 是唯一的真相来源。
+账号行里仍然留着 `region`（`COM` / `CN`），但那只用于界面显示。
+
+由此多出来的 10 条方向：国际区 ⇄ 中国区 的跨区互搬 2 条，
+中国区 → 其它目标 3 条，其它源 → 中国区 4 条，
+外加中国区 → Outbase 1 条。方向矩阵从 21 条变成 **31 条**。
+
+#### 数据迁移（v3 → v4）
+
+拆分前一个平台只有一行账号，站点由 `region` 列决定。升级时必须把**国区**那一行
+改写到新 key，否则用户的国区凭据会被误标成国际区，登录时打到 `garmin.com` 去：
+
+```sql
+-- 仅当升级前那个佳明账号的 region='CN' 时才执行
+UPDATE accounts          SET platform = 'garmin-cn' WHERE platform = 'garmin';
+UPDATE cached_activities SET platform = 'garmin-cn' WHERE platform = 'garmin';
+-- 账本 / 任务 / 策略 / 排除表：sourcePlatform 与 targetPlatform 两列都改
+```
+
+判定依据只有一个：升级前那个账号的 `region`。旧模型下一个平台只可能存一个账号，
+所以 `region='CN'` 意味着所有 `garmin` 的行都属于国区；否则原样不动。
+迁移**只改主键值，不碰密文**，用户的密码不用重输。
+见 `AppDatabaseMigrationTest` 的两个用例。
+
 ### 1.9 坑位清单（实现时必须遵守）
 
 1. **登录后必须去掉 `User-Agent`**（原项目 `garmin_client.py:73` 显式删除，否则取不到数据）。

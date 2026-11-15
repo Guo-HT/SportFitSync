@@ -206,7 +206,7 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "运动同步 · 把 Garmin / Coros / Strava / iGPSPORT / OneLap / Outbase 的活动互相搬运",
+                    "运动同步 · 把 Garmin（国际区 / 中国区）/ Coros / Strava / iGPSPORT / OneLap / Outbase 的活动互相搬运",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

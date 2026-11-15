@@ -19,6 +19,9 @@ object PlatformRegistry {
 
     fun gateway(platform: Platform): PlatformGateway = when (platform) {
         Platform.GARMIN -> GarminGateway
+        // The China site speaks the same protocol; the gateway picks the
+        // domain from the platform itself.
+        Platform.GARMIN_CN -> GarminGateway
         Platform.COROS -> CorosGateway
         Platform.STRAVA -> StravaGateway
         Platform.IGPSPORT -> IgpsportGateway

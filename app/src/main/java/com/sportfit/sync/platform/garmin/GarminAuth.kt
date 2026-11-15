@@ -32,6 +32,8 @@ import java.net.URLDecoder
  *    (a single encode yields `401 Invalid signature`).
  */
 class GarminAuth(
+    /** Which Garmin account is being logged in; used for the MFA prompt. */
+    private val platform: Platform,
     private val mfa: MfaProvider,
     private val log: suspend (String) -> Unit = {},
 ) {
@@ -97,7 +99,7 @@ class GarminAuth(
         // Step 3b — optional MFA challenge. Garmin signals it only through the
         // page title ("Enter MFA code for login"), with no dedicated status code.
         if (title.contains("MFA")) {
-            val code = mfa.requestCode(Platform.GARMIN)
+            val code = mfa.requestCode(platform)
                 ?: throw PlatformException.Auth("Garmin 需要两步验证码，但未输入")
             val mfaCsrf = extractCsrf(html)
                 ?: throw PlatformException.Auth("Garmin 两步验证页解析失败（未找到 _csrf）")

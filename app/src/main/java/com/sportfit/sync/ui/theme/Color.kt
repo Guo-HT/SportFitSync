@@ -56,6 +56,8 @@ object Illustration {
 /** 平台图标底色：每个平台一个稳定的颜色，列表里一眼能认出来。 */
 object PlatformPalette {
     val garmin = Color(0xFF0B7BD3)
+    /** 国区佳明：同一个品牌的另一个站点，用同色系深一档区分。 */
+    val garminCn = Color(0xFF075EA8)
     val coros = Color(0xFFE4572E)
     val strava = Color(0xFFFC5200)
     val igpsport = Color(0xFF12B886)

@@ -30,6 +30,18 @@ import org.junit.Test
  * The matrix is therefore the union of the two upstreams, and this test pins
  * it explicitly: the 12 original directions plus the 4 that need iGPSPORT on
  * the right-hand side.
+ *
+ * ## Two additions of this project
+ *
+ * On top of the two upstreams the app added its own directions:
+ *
+ * - **Outbase** (2026-11-01) — target-only, so 5 more directions.
+ * - **Garmin 中国区** (2026-11-15) — Garmin was split into two platforms
+ *   (`garmin` = 国际区, `garmin-cn` = 中国区) because the two sites are
+ *   separate accounts. Both can be a source and a target, which adds
+ *   10 directions: the two cross-region pairs (`garmin` ⇄ `garmin-cn`),
+ *   every other source into `garmin-cn`, and `garmin-cn` into every other
+ *   target.
  */
 class SyncDirectionMatrixTest {
 
@@ -75,15 +87,39 @@ class SyncDirectionMatrixTest {
      */
     private val outbaseTargetDirections = setOf(
         "garmin->outbase",
+        "garmin-cn->outbase",
         "coros->outbase",
         "strava->outbase",
         "igpsport->outbase",
         "onelap->outbase",
     )
 
+    /**
+     * Directions that only exist because Garmin 中国区 is a platform of its own.
+     *
+     * The two cross-region pairs are the ones the feature was asked for:
+     * `garmin` (国际区) ⇄ `garmin-cn` (中国区). The rest follow from the
+     * split — the China account can also feed the other platforms, and the
+     * other platforms can feed it.
+     */
+    private val garminCnDirections = setOf(
+        // 跨区互搬
+        "garmin->garmin-cn",
+        "garmin-cn->garmin",
+        // 中国区 → 其它目标
+        "garmin-cn->coros",
+        "garmin-cn->strava",
+        "garmin-cn->igpsport",
+        // 其它源 → 中国区
+        "coros->garmin-cn",
+        "strava->garmin-cn",
+        "igpsport->garmin-cn",
+        "onelap->garmin-cn",
+    )
+
     /** Every direction the app supports. */
     private val expectedDirections = upstreamDirections + igpsportTargetDirections +
-        outbaseTargetDirections
+        outbaseTargetDirections + garminCnDirections
 
     /** Product platforms only: rehearsal and export are not destinations. */
     private val realPlatforms = Platform.entries.filter {
@@ -93,7 +129,7 @@ class SyncDirectionMatrixTest {
     @Test
     fun `sources match the upstream project`() {
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport", "onelap"),
+            setOf("garmin", "garmin-cn", "coros", "strava", "igpsport", "onelap"),
             realPlatforms.filter { it.canBeSource }.map { it.key }.toSet(),
         )
     }
@@ -103,7 +139,7 @@ class SyncDirectionMatrixTest {
         // OneLap is still export-only in both upstreams: it never appears as
         // the right-hand side of a sync script name.
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport"),
+            setOf("garmin", "garmin-cn", "coros", "strava", "igpsport"),
             realPlatforms.filter { it.canBeTarget && it != Platform.OUTBASE }.map { it.key }.toSet(),
         )
     }
@@ -119,7 +155,7 @@ class SyncDirectionMatrixTest {
             }
             .toSet()
 
-        assertEquals(21, derived.size)
+        assertEquals(31, derived.size)
         assertEquals(expectedDirections, derived)
     }
 
@@ -149,17 +185,18 @@ class SyncDirectionMatrixTest {
     }
 
     @Test
-    fun `self directions are the four the picker must exclude`() {
-        // 5 sources x 5 targets = 25 combinations, minus the four self
-        // directions (garmin, coros, strava and igpsport on both sides) =
-        // the 21 supported directions. Outbase cannot be a source, so it
-        // never contributes a self direction.
+    fun `self directions are the five the picker must exclude`() {
+        // 6 sources x 6 targets = 36 combinations, minus the five self
+        // directions (garmin, garmin-cn, coros, strava and igpsport on both
+        // sides) = the 31 supported directions. Outbase cannot be a source
+        // and OneLap cannot be a target, so neither contributes a self
+        // direction.
         val allCombinations = realPlatforms.count { it.canBeSource } *
             realPlatforms.count { it.canBeTarget }
         val selfDirections = realPlatforms.count { it.canBeSource && it.canBeTarget }
 
-        assertEquals(25, allCombinations)
-        assertEquals(4, selfDirections)
+        assertEquals(36, allCombinations)
+        assertEquals(5, selfDirections)
         assertEquals(expectedDirections.size, allCombinations - selfDirections)
     }
 
@@ -167,7 +204,7 @@ class SyncDirectionMatrixTest {
     fun `the rehearsal platform never leaks into a release build`() {
         val releasePickable = Platform.pickable(includeDemo = false).map { it.key }.toSet()
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport", "onelap", "outbase"),
+            setOf("garmin", "garmin-cn", "coros", "strava", "igpsport", "onelap", "outbase"),
             releasePickable,
         )
         assertTrue("demo" in Platform.pickable(includeDemo = true).map { it.key })
@@ -179,8 +216,49 @@ class SyncDirectionMatrixTest {
         // projects had. Its credential is the session cookie from the web
         // login rather than a username and password.
         assertEquals(
-            setOf("garmin", "coros", "strava", "igpsport", "onelap", "outbase"),
+            setOf("garmin", "garmin-cn", "coros", "strava", "igpsport", "onelap", "outbase"),
             Platform.accountPlatforms.map { it.key }.toSet(),
         )
+    }
+
+    @Test
+    fun `the two Garmin regions can sync into each other`() {
+        // 这是本次改动的核心诉求：国际区与中国区是各自独立的账号，
+        // 但两边互相搬运活动是合理的 —— 很多用户两个站都有账号。
+        assertTrue(
+            "国际区 → 中国区 方向缺失",
+            expectedDirections.contains("garmin->garmin-cn"),
+        )
+        assertTrue(
+            "中国区 → 国际区 方向缺失",
+            expectedDirections.contains("garmin-cn->garmin"),
+        )
+
+        // 两个方向都不是自环：它们是两个不同的平台。
+        val forward = SyncDirection.fromKey("garmin->garmin-cn")
+        val backward = SyncDirection.fromKey("garmin-cn->garmin")
+        assertNotNull(forward)
+        assertNotNull(backward)
+        assertTrue(forward!!.source != forward.target)
+        assertTrue(backward!!.source != backward.target)
+        assertEquals(Platform.GARMIN, forward.source)
+        assertEquals(Platform.GARMIN_CN, forward.target)
+        assertEquals(Platform.GARMIN_CN, backward.source)
+        assertEquals(Platform.GARMIN, backward.target)
+    }
+
+    @Test
+    fun `the two Garmin regions are separate accounts`() {
+        // 账号是按平台 key 存的，所以两个区天然是两条独立的凭据，
+        // 可以同时配置 —— 这正是「账户列表支持两个佳明账号」的基础。
+        assertEquals("garmin", Platform.GARMIN.key)
+        assertEquals("garmin-cn", Platform.GARMIN_CN.key)
+        assertTrue(Platform.GARMIN.key != Platform.GARMIN_CN.key)
+
+        // 两边都是既可作源又可作目标的平台。
+        listOf(Platform.GARMIN, Platform.GARMIN_CN).forEach { platform ->
+            assertTrue("${platform.key} 不能作源", platform.canBeSource)
+            assertTrue("${platform.key} 不能作目标", platform.canBeTarget)
+        }
     }
 }

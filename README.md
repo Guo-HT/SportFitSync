@@ -4,6 +4,8 @@
 
 **把 Garmin / Coros / Strava / iGPSPORT / OneLap / Outbase 的运动记录，在手机上一键搬到另一个平台。**
 
+> 佳明分「国际区（garmin.com）」与「中国区（garmin.cn）」两个账号，可分别配置、互相搬运。
+
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.21-7F52FF.svg?logo=kotlin)](https://kotlinlang.org)
 [![AGP](https://img.shields.io/badge/AGP-8.10.1-3DDC84.svg?logo=android)](https://developer.android.com)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4.svg?logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
@@ -40,7 +42,7 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 | | |
 |---|---|
-| **21 条同步方向** | 5 个源平台 × 5 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
+| **31 条同步方向** | 6 个源平台 × 6 个目标平台，任意组合（详见[同步方向矩阵](#同步方向矩阵)） |
 | **跨账号去重** | 内容指纹识别「同一份数据换了新 activityId」，避免在目标端制造副本 |
 | **失败可重试** | 单条失败不影响整批；失败项自动重试，也能一键重跑失败集 |
 | **可取消 · 可观察** | 实时进度、逐条日志、前台服务保活，切到后台也不中断 |
@@ -72,19 +74,22 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 
 方向由「源 × 目标」组合产生，**不需要为每个方向单独写脚本**。
 
-| 源 ↓ / 目标 → | Garmin | Coros | Strava | iGPSPORT | Outbase |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **Garmin** | — | ✅ | ✅ | ✅ | ✅ |
-| **Coros** | ✅ | — | ✅ | ✅ | ✅ |
-| **Strava** | ✅ | ✅ | — | ✅ | ✅ |
-| **iGPSPORT** | ✅ | ✅ | ✅ | — | ✅ |
-| **OneLap** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 源 ↓ / 目标 → | Garmin 国际区 | Garmin 中国区 | Coros | Strava | iGPSPORT | Outbase |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Garmin 国际区** | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Garmin 中国区** | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| **Coros** | ✅ | ✅ | — | ✅ | ✅ | ✅ |
+| **Strava** | ✅ | ✅ | ✅ | — | ✅ | ✅ |
+| **iGPSPORT** | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| **OneLap** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-**5 个源 × 5 个目标 − 4 个自环 = 21 条方向。** 这条矩阵由
+**6 个源 × 6 个目标 − 5 个自环 = 31 条方向。** 这条矩阵由
 [`SyncDirectionMatrixTest`](app/src/test/java/com/sportfit/sync/domain/SyncDirectionMatrixTest.kt)
 钉死：其中 12 条逐一对应上游 Python 项目的 `<src>_sync_<dst>.py` 脚本，
 另外 4 条是本项目自己接的 iGPSPORT 目标方向，
-再往后 5 条是 2026-11-01 接入的 Outbase 目标方向——
+再往后 5 条是 2026-11-01 接入的 Outbase 目标方向，
+最后 10 条来自 2026-11-15 的佳明分区（`garmin` ⇄ `garmin-cn` 跨区互搬，
+以及中国区与其它平台之间的 8 条）——
 少一条就编译失败——**方向数变了，你会立刻知道**。
 
 `iGPSPORT` 现在**既作源也作目标**：它的网页端本来就有导入通道，只是上游项目从没接，
@@ -92,6 +97,11 @@ Python 脚本 + GitHub Actions 定时任务 + 手动改 SQLite 去重表，而�
 `OneLap` 仍然只能作源——它确实没有导入接口。
 `Outbase` **只能作目标**：它是一个数据聚合服务，没有面向单个用户的活动列表接口，
 所以只能往里推（见[平台协议 § 六](docs/platform-protocols.md)）。
+
+**佳明分成了两个平台。** 国际区（garmin.com）与中国区（garmin.cn）是两套独立的账号体系：
+SSO 域名、OAuth 授权域名、活动接口域名全都不同，同一个邮箱在两边也是两个账号，
+而用户常常两个站都有。所以它们不是「一个平台 + 一个区域下拉框」，而是两个平台：
+各自独立保存凭据、各自缓存活动列表，并且可以互相作为源和目标。
 
 > ⚠️ iGPSPORT 与 Outbase 这两条上传通道是**移植**自其它项目的，
 > **本项目尚未用真实账号端到端跑通**，实测状态与 Garmin / Coros / Strava 不同。
@@ -416,7 +426,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ```bash
 ./build.sh :app:assembleDebug            # 构建 debug APK
-./build.sh :app:testDebugUnitTest        # JVM 单元测试（136 项，秒级）
+./build.sh :app:testDebugUnitTest        # JVM 单元测试（138 项，秒级）
 ./build.sh :app:connectedDebugAndroidTest # 仪器测试（22 项，需模拟器在线）
 ./build.sh clean                         # 清理构建产物
 ```
@@ -467,7 +477,7 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 
 | 类型 | 数量 | 运行方式 |
 |---|---|---|
-| JVM 单元测试 | **136** 项 / 15 个测试类 | `./build.sh :app:testDebugUnitTest` |
+| JVM 单元测试 | **138** 项 / 15 个测试类 | `./build.sh :app:testDebugUnitTest` |
 | 仪器测试 | **22** 项 / 5 个测试类 | `./build.sh :app:connectedDebugAndroidTest` |
 
 覆盖的关键行为：
@@ -481,12 +491,14 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
   `ec` 语义（成功 / 重复 / 登录失效 / **待处理不算成功**）、`sessionId` cookie 提取
 - **同步候选选择**（25 项）：失败可重试、排除优先、指纹去重、处理量上限
 - **内容指纹**（16 项）：归一化、无时间回落 `NONE`、大小写与空白差异
-- **方向矩阵**（8 项）：21 条方向逐一钉死（上游 12 条脚本 + 4 条 iGPSPORT + 5 条 Outbase 目标方向）
+- **方向矩阵**（10 项）：31 条方向逐一钉死（上游 12 条脚本 + 4 条 iGPSPORT + 5 条 Outbase + 10 条佳明分区）
 - **Garmin OAuth1**（5 项）：签名基串、`login-url` 双编码回归、`mfa_token` 参与签名
 - **缓存保留策略**（仪器 10 项）：安全项清理不动账本、危险项需 `force`、日志 30 天 / 历史 100 条
 - **同步引擎**（仪器 5 项）：逐条失败隔离、重试计数、取消
 - **迁移不丢数据**（仪器 1 项）：v2 → v3 后账号与账本都还在
 - **导出**（仪器 2 项 + 5 项命名测试）：MediaStore 写入并读回比对、文件名清洗
+- **数据库迁移**（仪器 3 项）：v2→v3 保住账号与账本；v3→v4 把国区佳明的行改写到新 key
+  （凭据内容不动，国际区的行原样不动）
 - **同步期间不熄屏**（仪器 2 项）：窗口 `FLAG_KEEP_SCREEN_ON` 跟随同步状态——
   跑起来时点亮、结束后恢复（用演练平台跑真实一轮同步来验证）
 
@@ -503,11 +515,14 @@ $SQLITE .dbcheck/sportfit-sync.db "select id,status,total,okCount,dupCount,failC
 2. 在 `platform/<name>/` 实现 `PlatformGateway`，内部提供 `PlatformSource` / `PlatformTarget`。
 3. 注册到 `PlatformRegistry.gateway()`。
 4. 若需要额外字段（区域、client id），在 `AccountEditScreen.regionOptions()` 里补选项。
+   —— 区域若是**账号级别**的（一个平台存多个账号），就别做成下拉框，
+   直接拆成两个平台（见佳明的国际区 / 中国区）。
 5. **更新 `SyncDirectionMatrixTest` 的 `upstreamDirections`**（或
-   `igpsportTargetDirections` / `outbaseTargetDirections`）——这个测试会强制你面对
-   「方向数变了」这件事。
+   `igpsportTargetDirections` / `outbaseTargetDirections` / `garminCnDirections`）——
+   这个测试会强制你面对「方向数变了」这件事。
 6. 若平台的凭据不是「用户名 + 密码」，还要在 `AccountEditScreen` 里给它单独开一个分支
    （Outbase 走的是 WebView 登录，凭据是网页登录留下的 `sessionId` cookie）。
+7. 若拆分了平台，别忘了 `AppDatabase` 的版本号与迁移：老数据要改写到新 key。
 
 ### 新增一条同步方向
 

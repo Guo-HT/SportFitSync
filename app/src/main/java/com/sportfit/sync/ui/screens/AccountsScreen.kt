@@ -278,7 +278,8 @@ private fun AccountCard(
 }
 
 internal fun regionLabel(platform: Platform, region: String): String = when (platform) {
-    Platform.GARMIN -> if (region.equals("CN", true)) "中国区 (garmin.cn)" else "国际区 (garmin.com)"
+    Platform.GARMIN -> "国际区 (garmin.com)"
+    Platform.GARMIN_CN -> "中国区 (garmin.cn)"
     Platform.COROS -> when (region) {
         "1" -> "国际区"
         "3" -> "欧洲区"

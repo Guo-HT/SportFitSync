@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.OutlinedFlag
 import androidx.compose.material.icons.filled.Science
@@ -82,6 +83,7 @@ fun PlatformChip(
 
 fun platformIcon(platform: Platform): ImageVector = when (platform) {
     Platform.GARMIN -> Icons.Filled.OutlinedFlag
+    Platform.GARMIN_CN -> Icons.Filled.Flag
     Platform.COROS -> Icons.Filled.Speed
     Platform.STRAVA -> Icons.AutoMirrored.Filled.DirectionsRun
     Platform.IGPSPORT -> Icons.AutoMirrored.Filled.DirectionsBike

@@ -332,6 +332,7 @@ fun PlatformAvatar(
 /** 平台固定色。 */
 fun Platform.accentColor(): Color = when (this) {
     Platform.GARMIN -> PlatformPalette.garmin
+    Platform.GARMIN_CN -> PlatformPalette.garminCn
     Platform.COROS -> PlatformPalette.coros
     Platform.STRAVA -> PlatformPalette.strava
     Platform.IGPSPORT -> PlatformPalette.igpsport
