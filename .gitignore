@@ -38,3 +38,9 @@ keystore/
 .upstream/
 .pysync/
 .research/
+
+# Build artefacts. The signed APK is published as a GitHub Release asset by
+# tools/release.sh — it must not sit in the repository history, where every
+# clone would have to download it.
+*.apk
+*.aab
