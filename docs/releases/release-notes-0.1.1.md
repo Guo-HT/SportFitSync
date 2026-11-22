@@ -67,7 +67,7 @@
 
 ### 安装
 
-下载 **[app-release.apk](https://github.com/Guo-HT/SportFitSync/releases/download/v0.1.1/app-release.apk)**（12.6 MB），传到手机后点击安装。首次需要允许「安装未知来源应用」。
+下载 **[app-release.apk](https://github.com/Guo-HT/SportFitSync/releases/download/v0.1.1/app-release.apk)**（{{SIZE}} 字节），传到手机后点击安装。首次需要允许「安装未知来源应用」。
 
 - 最低系统版本：Android 8.0（API 26）
 - 目标 API：36
@@ -80,7 +80,7 @@
 ### 校验
 
 ```
-SHA-256: 12ddcd179b160605114caa7eb8343835f1c86bd8bb1c9aa4a6b30f2cce45433a
+SHA-256: {{SHA256}}
 ```
 
 ```bash

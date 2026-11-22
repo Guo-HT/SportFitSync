@@ -114,9 +114,22 @@ auth=(-H "Authorization: Bearer ${TOKEN}"
       -H "X-GitHub-Api-Version: 2022-11-28")
 
 # Create the release (idempotent: an existing release for the tag is reused).
+#
+# The notes may contain the placeholders {{SHA256}} and {{SIZE}}. They are
+# substituted with the values of the APK that is *about to be uploaded* — the
+# build is not byte-reproducible (`baseline.prof` and the R8 output differ on
+# every rebuild), so a checksum written into the notes by hand would describe
+# a different file than the one users download.
 BODY=""
 if [[ -f "$NOTES_FILE" ]]; then
-  BODY="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1], encoding="utf-8").read()))' "$NOTES_FILE")"
+  BODY="$(python3 - "$NOTES_FILE" "$SHA256" "$SIZE" <<'PY'
+import json, sys
+path, sha, size = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(path, encoding='utf-8').read()
+text = text.replace('{{SHA256}}', sha).replace('{{SIZE}}', size)
+print(json.dumps(text))
+PY
+)"
 else
   echo "  notes file $NOTES_FILE not found — creating the release with an empty body"
   BODY="null"
